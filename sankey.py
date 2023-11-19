@@ -20,54 +20,6 @@ def bend_line(y_from: float, y_to: float, n_grid: int=100):
 
     return line
 
-def sank_blocks(cluster_value_counts: pl.DataFrame, scale=1.0, gap=0.02):
-    """ Return an array representing the blocks of a level of a Sankey diagram
-
-    The scale parameter is the size of a 1-hospital cluster. 
-    The gap parameter defines the relative size of the gap on either side of a block, as compared to the block itself
-    """
-
-    cluster_freqs = (
-        cluster_value_counts
-        .rename({
-            col: ('counts' if col != 'cluster_id' else 'cluster_id') for col in cluster_value_counts.columns
-        })
-        .drop_nulls()
-        .sort('counts', descending=True)
-    )
-
-    cluster_blocks = (
-        cluster_freqs.lazy()
-        .with_columns(
-            block_size=(1+gap) * scale * pl.col('counts'),
-            block_gap=gap * scale * pl.col('counts'),
-        )
-        .with_columns(
-            block_end=pl.col('block_size').cumsum(),
-        )
-        .with_columns(
-            block_start=pl.col('block_end').shift_and_fill(0),
-            block_end=(pl.col('block_end') - pl.col('block_gap')),
-            block_size=(pl.col('block_size') - pl.col('block_gap')),
-        )
-        .select(
-            cluster_col.name,
-            'block_start',
-            'block_end'
-        )
-        .collect()
-    )
-
-    return cluster_blocks
-
-
-
-# def sankey_multiflow(data: pl.DataFrame):
-#     pass
-
-#     for in pairwise()
-#     data.group_by()
-
 def sankey_diagram(
         data: pl.DataFrame,
         block_scale = 1.0,
@@ -94,24 +46,59 @@ def sankey_diagram(
         .group_by(pl.all()).count().drop_nulls()
         .pivot(values='count', index='value', columns='snapshot', aggregate_function=None)
         .rename({'value': 'cluster_id'}).sort('cluster_id')
+        .with_columns(
+            (pl.exclude('cluster_id') * block_scale * (1 + block_gap)).name.map(lambda x: f"{x}_size"),
+        )
     )
-    # 2. For each column generate a DataFrame that will map to block sizes
+    # 2. For each column compute where the sankey blocks start and end
     cluster_blocks = (
         cluster_size
         .with_columns(
-            (pl.exclude('cluster_id') * block_scale).name.map(lambda x: f"{x}_size"),
-            (pl.exclude('cluster_id') * block_scale * block_gap).name.map(lambda x: f"{x}_gap"),
-        )
-        .with_columns(
+            # cluster_block_end
             sel.ends_with('_size').cumsum().name.map(lambda x: f"{x.rstrip('_size')}_block_end"),
         )
         .with_columns(
+            # cluster_block_start
             sel.ends_with('_block_end').shift(1, fill_value=0).name.map(lambda x: f"{x.strip('_end')}_start"),
-            sel.ends_with('_block_end') # need to subtract concordant cols, can't do that, so need diff method, prob using cluster_id as a constasnt index.
         )
     )
-    pass
+    # 2a. mapping a separate dataframe to subtract concordant columns (very non-scalable)
+    cluster_blocks_prime = cluster_size.with_columns(
+        # subtract the gap
+        (pl.all() * 0).name.map(lambda x: x),
+        (pl.exclude('cluster_id', '^.*_size$') * block_scale * block_gap).name.map(lambda x: f"{x}_block_end"),
+        (pl.exclude('cluster_id', '^.*_size$') * 0.0).name.map(lambda x: f"{x}_block_start")
+    )
 
+    cluster_blocks = (
+        (cluster_blocks - cluster_blocks_prime)
+        .select(
+            'cluster_id',
+            sel.ends_with('_block_start'),
+            sel.ends_with('_block_end')
+        )
+    )
+
+    # 3. generate the dataframe that has the amount of flow between clusters
+
+    flows = pl.DataFrame(schema={'from': pl.Int64, 'to': pl.Int64})
+
+    for col0, col1 in pairwise(data.columns[1:]):
+        this_flow = (
+            data.select(col0, col1)
+            .group_by(pl.all()).count()
+            .rename({
+                'count': f"{col0.split('_')[1]}",
+                col0: 'from',
+                col1: 'to'
+            })
+            .drop_nulls()
+        )
+        flows = flows.join(this_flow, on=('from','to'), how='outer')
+
+    flows = flows.sort('from', 'to')
+
+    pass
 
 # plan of attack
 """
@@ -140,3 +127,7 @@ OUT: blocks ||> cluster_id | x_loc | y_min | y_max |
 OUT: flows  ||> cluster_from | cluster_to | flow_value
 OUT: plot ~> sankey diagram
 """
+
+if __name__ == "__main__":
+    dfx = pl.read_csv("flow_reweighted_14/cluster_by_name.csv")
+    sankey_diagram(dfx)
