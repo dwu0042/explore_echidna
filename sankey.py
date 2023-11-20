@@ -29,7 +29,7 @@ def sankey_diagram(
     Creates a sankey diagram
     data should be structured as 
 
-    | name | location_1 | location_2 | location_3 | ...
+    | name | cluster_1 | cluster_2 | cluster_3 | ...
 
     where named agents move from location_1 to location_2, for example.
     A location_* value can be Null (None), in which case they are not part of the system at that point in time
@@ -79,24 +79,108 @@ def sankey_diagram(
         )
     )
 
+    # 2c. resize the block gap so that we can use it later
+    cluster_size = (
+        cluster_size
+        .with_columns(pl.col('^.*_size$') / (1 + block_gap) )
+    )
+
     # 3. generate the dataframe that has the amount of flow between clusters
+    # also join so that we get the actual start and end of each flow to bend_line
 
     flows = pl.DataFrame(schema={'from': pl.Int64, 'to': pl.Int64})
 
     for col0, col1 in pairwise(data.columns[1:]):
+        base_name = col0.split('_')[1]
         this_flow = (
             data.select(col0, col1)
             .group_by(pl.all()).count()
             .rename({
-                'count': f"{col0.split('_')[1]}",
+                'count': base_name,
                 col0: 'from',
                 col1: 'to'
             })
             .drop_nulls()
+            # attach size_left and size_right
+            .join(
+                cluster_size.select(
+                    pl.col('cluster_id'),
+                    pl.col(col0).alias('tot_left'),
+                    pl.col(f'{col0}_size').alias('size_left'),
+                ),
+                left_on='from',
+                right_on='cluster_id',
+                how='left',
+            )
+            .join(
+                cluster_size.select(
+                    pl.col('cluster_id'),
+                    pl.col(col1).alias('tot_right'),
+                    pl.col(f'{col1}_size').alias('size_right'),
+                ),
+                left_on='to',
+                right_on='cluster_id',
+                how='left',
+            )
+            .join(
+                cluster_blocks.select(
+                    pl.col('cluster_id'),
+                    pl.col(f'{col0}_block_start').alias('block_left'),
+                ),
+                left_on='from',
+                right_on='cluster_id',
+                how='left',
+            )
+            .join(
+                cluster_blocks.select(
+                    pl.col('cluster_id'),
+                    pl.col(f'{col1}_block_start').alias('block_right'),
+                ),
+                left_on='to',
+                right_on='cluster_id',
+                how='left',
+            )
         )
+
+        # compute the relative block positions
+        this_flow = (
+            this_flow
+            .sort('from', 'to')
+            .with_columns(
+                (
+                    (pl.col(base_name).cumsum().over('from') - pl.col(base_name)) 
+                    / pl.col('tot_left')
+                ).alias('left_cumul'),
+                (
+                    (pl.col(base_name).cumsum().over('to') - pl.col(base_name)) 
+                    / pl.col('tot_right')
+                ).alias('right_cumul'),
+            )
+            .with_columns(
+                (pl.col('left_cumul') * pl.col('size_left') + pl.col('block_left')).alias('left_below'),
+                ((pl.col('left_cumul') + pl.col(base_name)/pl.col('tot_left')) * pl.col('size_left') + pl.col('block_left')).alias('left_above'),
+                (pl.col('right_cumul') * pl.col('size_right') + pl.col('block_right')).alias('right_below'),
+                ((pl.col('right_cumul') + pl.col(base_name)/pl.col('tot_right')) * pl.col('size_right') + pl.col('block_right')).alias('right_above'),
+            )
+            .select(
+                'from', 'to',
+                (pl.col('left_below', 'left_above', 'right_below', 'right_above')
+                 .name.map(lambda cat: f"{base_name}_{cat}"))
+            )
+        )
+
         flows = flows.join(this_flow, on=('from','to'), how='outer')
 
     flows = flows.sort('from', 'to')
+
+    # 4. patch flows on figure
+
+    fig = plt.figure()
+    ax = fig.add_subplot()
+
+    for column_base in data.columns[1:]:
+        base_name = column_base.split("_")[1]
+        
 
     pass
 
