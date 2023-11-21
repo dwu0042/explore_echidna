@@ -9,7 +9,7 @@ def convert_distance_to_flow(G: ig.Graph):
     """invert weights. Needed to convert distance graph to weight graph for infomap"""
     G.es['weight'] = [1/k for k in G.es['weight']]
 
-def infomap(G: ig.Graph, edge_weights='weight', assign=False):
+def infomap(G: ig.Graph, edge_weights='weight', assign=False, sort=True):
     """Performs infomap clustering on the graph, and then lables the clusters
     
     Returns
@@ -31,8 +31,9 @@ def infomap(G: ig.Graph, edge_weights='weight', assign=False):
         G['cluster'] = list(cluster_labels.astype(int))
 
     # sort the clusters appropriately
-    size_mapping = {c: (i+1) for i, (c,_) in enumerate(Counter(cluster_labels).most_common())}
-    cluster_labels = [size_mapping[c] for c in cluster_labels]
+    if sort:
+        size_mapping = {c: (i+1) for i, (c,_) in enumerate(Counter(cluster_labels).most_common())}
+        cluster_labels = [size_mapping[c] for c in cluster_labels]
 
     return cluster_labels
 
