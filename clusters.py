@@ -3,6 +3,7 @@ import igraph as ig
 import polars as pl
 from pathlib import Path
 from itertools import pairwise, chain
+from collections import Counter
 
 def convert_distance_to_flow(G: ig.Graph):
     """invert weights. Needed to convert distance graph to weight graph for infomap"""
@@ -25,9 +26,13 @@ def infomap(G: ig.Graph, edge_weights='weight', assign=False):
         
         n_clus = len(cz.sizes())
         clus_idx_0 += n_clus
-    
+
     if assign:
         G['cluster'] = list(cluster_labels.astype(int))
+
+    # sort the clusters appropriately
+    size_mapping = {c: (i+1) for i, (c,_) in enumerate(Counter(cluster_labels).most_common())}
+    cluster_labels = [size_mapping[c] for c in cluster_labels]
 
     return cluster_labels
 

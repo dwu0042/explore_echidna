@@ -1,5 +1,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
+import seaborn as sns
 import polars as pl
 from polars import selectors as sel
 from itertools import pairwise
@@ -23,7 +24,8 @@ def bend_line(y_from: float, y_to: float, n_grid: int=100):
 def sankey_diagram(
         data: pl.DataFrame,
         block_scale = 1.0,
-        block_gap = 0.02
+        block_gap = 0.1,
+        level_separation = 20.0,
     ):
     """
     Creates a sankey diagram
@@ -36,6 +38,7 @@ def sankey_diagram(
 
     We will return a matplotlib.pyplot Figure instance that contains a single Axes that has the Sankey diagram.
     """
+
 
     # Build block cache for each location
     # 1. Determine the size at each column
@@ -50,6 +53,7 @@ def sankey_diagram(
             (pl.exclude('cluster_id') * block_scale * (1 + block_gap)).name.map(lambda x: f"{x}_size"),
         )
     )
+
     # 2. For each column compute where the sankey blocks start and end
     cluster_blocks = (
         cluster_size
@@ -84,6 +88,8 @@ def sankey_diagram(
         cluster_size
         .with_columns(pl.col('^.*_size$') / (1 + block_gap) )
     )
+
+    print("blocks determined")
 
     # 3. generate the dataframe that has the amount of flow between clusters
     # also join so that we get the actual start and end of each flow to bend_line
@@ -173,16 +179,35 @@ def sankey_diagram(
 
     flows = flows.sort('from', 'to')
 
-    # 4. patch flows on figure
+    print("flows computed")
 
-    fig = plt.figure()
+    # 4. patch flows to figure
+
+    fsize = np.array([cluster_size.shape[1] * 10, cluster_size.shape[0]])
+    fsize = fsize / fsize[0] * 100
+    fig = plt.figure(figsize=fsize, dpi=180, layout='compressed')
     ax = fig.add_subplot()
+    ax.spines[['top', 'bottom', 'left', 'right']].set_visible(False)
 
-    for column_base in data.columns[1:]:
+    n_flow = 60
+
+    for i, column_base in enumerate(data.columns[1:]):
         base_name = column_base.split("_")[1]
-        
+        level_x = i * level_separation
+        x_arr = np.linspace(level_x, level_x + level_separation, n_flow)
+        flow_partition = flows.select(sel.starts_with(base_name).name.map(lambda x: x.lstrip(base_name+'_'))).drop_nulls().to_dicts()
+        clrs = sns.color_palette('hls', len(flow_partition))
 
-    pass
+        for flow_part, clr in zip(flow_partition, clrs):
+            line_below = bend_line(flow_part['left_below'], flow_part['right_below'], n_flow)
+            line_above = bend_line(flow_part['left_above'], flow_part['right_above'], n_flow)
+            ax.fill_between(x_arr, line_below, line_above, color=clr, alpha=0.6)
+
+    print("figure constructed")
+
+    fig.savefig('test.pdf')
+
+    return fig, ax
 
 # plan of attack
 """
