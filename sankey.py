@@ -1,5 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib import colors
+from matplotlib import animation
 import seaborn as sns
 import polars as pl
 from polars import selectors as sel
@@ -22,13 +24,13 @@ def bend_line(y_from: float, y_to: float, n_grid: int = 100):
 
     return line
 
-
 def sankey_diagram(
     data: pl.DataFrame,
-    save_to: str = None,
+    save_to: str|None = None,
     block_scale=1.0,
     block_gap=0.1,
     level_separation=20.0,
+    export='figure',
 ):
     """
     Creates a sankey diagram
@@ -93,6 +95,8 @@ def sankey_diagram(
     # 2c. resize the block gap so that we can use it later
     cluster_size = cluster_size.with_columns(pl.col("^.*_size$") / (1 + block_gap))
 
+    if export == 'cluster_size':
+        return cluster_size
     print("blocks determined")
 
     # 3. generate the dataframe that has the amount of flow between clusters
@@ -195,6 +199,8 @@ def sankey_diagram(
 
     flows = flows.sort("from", "to")
 
+    if export == "flows":
+        return flows
     print("flows computed")
 
     # 4. patch flows to figure
@@ -235,6 +241,61 @@ def sankey_diagram(
         fig.savefig(save_to)
     else:
         return fig, ax
+
+def flow_frame(data: pl.DataFrame):
+
+    flows = pl.DataFrame(schema={"from": pl.Int64, "to": pl.Int64})
+
+    for col0, col1 in pairwise(data.columns[1:]):
+        base_name = col0.split("_")[1]
+        this_flow = (
+            data.select(col0, col1)
+            .group_by(pl.all())
+            .count()
+            .rename({"count": base_name, col0: "from", col1: "to"})
+            .drop_nulls()
+        )
+        flows = flows.join(this_flow, on=('from', 'to'), how='outer')
+
+    return flows.sort('from', 'to')
+
+def remap_flow_fromto(flows: pl.DataFrame):
+    """ Remaps the identifiers (from/to) of the flows to indexable values """
+
+    index_map = flows.select(pl.col('from', 'to')).melt().select(pl.col('value').unique()).with_row_count()
+    return (
+        flows
+        .join(index_map, left_on='from', right_on='value', how='left')
+        .drop('from')
+        .rename({'row_nr': 'from'})
+        .join(index_map, left_on='to', right_on='value', how='left')
+        .drop('to')
+        .rename({'row_nr': 'to'})
+    )
+
+def export_flow_matrix(data: pl.DataFrame):
+    flows = flow_frame(data)
+    flows = remap_flow_fromto(flows)
+    num_clus = flows.select(pl.col('from', 'to')).melt().select(pl.col('value').unique()).shape[0]
+    flow_mat = np.zeros((num_clus, num_clus, len(flows.columns) - 2))
+    flow_indices = flows.select('from', 'to').to_dict(as_series=False)
+    flow_mat[flow_indices['from'], flow_indices['to']] = flows.drop('from', 'to').fill_null(0).to_numpy()
+    return flow_mat
+
+def construct_flow_anim(data: pl.DataFrame):
+    flow_matrix = export_flow_matrix(data)
+    sizer = (data.drop('name').max() - 1).select(pl.all().name.map(lambda x: x.split('_')[1])).to_numpy().flatten()
+
+    fig, ax = plt.subplots()
+    ims = []
+    for ii, sz in enumerate(sizer[:-1]):
+        A = flow_matrix[:sz,:sz,ii]
+        im = ax.imshow(A, norm=colors.PowerNorm(0.5), cmap='inferno', animated=True)
+        if  ii == 0:
+            ax.imshow(A, norm=colors.PowerNorm(0.5), cmap='inferno',)
+        ims.append([im])
+
+    return animation.ArtistAnimation(fig, ims, interval=50, blit=True, repeat_delay=1000)
 
 
 if __name__ == "__main__":
