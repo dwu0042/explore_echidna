@@ -7,3 +7,4 @@
 !clusters.py
 !sankey.py
 !.pipeline.yml
+!edgelist_to_lgl.sh
