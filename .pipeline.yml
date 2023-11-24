@@ -1,0 +1,43 @@
+- name: Extract temporal networks from VALT
+- name: Convert temporal networks from edgelist format to LGL NCol format
+  program: edgelist_to_lgl.sh
+  input: temponet_$name$.edgelist
+  output: temponet_$name$.lgl
+- name: Convert temporal snapshots to flow values
+  program: tempo2flow.sh
+  input: temponet_$name$.lgl
+  output: flownet_$name$.lgl
+- name: Split out temporal snapshots from temporal networks
+  program: projection_metrics.py
+  input: flownet_$name$.lgl | temponet_$name$.lgl
+  arguments:
+    - 'snapshot'
+    - '$input$'
+    - '-s'
+    - '$type_of_snapshot$'
+    - '-o'
+    - '$snapshots_folder$'
+  output: $snapshots_folder$ / $snapshot_file$
+- name: Compute timeseries of centrality measures
+  program: projection_metrics.py
+  input: $flow_snapshots_folder$
+  arguments:
+    - ['values', 'plots']
+    - '-m'
+    - '$centrality_metric$'
+    - '-o'
+    - ['$values_path$', '$plot_path$']
+  output: $values_path$(.csv), $plot_path$(.pdf/.png/..)
+- name: Perform clustering on temporal snapshots
+  program: clusters.py
+  input: $temponet_snapshots_folder$
+  arguments:
+    - '$temponet_snapshot_folder$'
+    - '$clustering_method$'
+    - '-o'
+    - '$cluster_file$'
+- name: Generate sankey diagram
+  program: sankey.py
+  input: $cluster_file$
+  arguments:
+    - 
