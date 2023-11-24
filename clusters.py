@@ -2,8 +2,8 @@ import numpy as np
 import igraph as ig
 import polars as pl
 from pathlib import Path
-from itertools import pairwise, chain
 from collections import Counter
+import argparse
 
 def convert_distance_to_flow(G: ig.Graph):
     """invert weights. Needed to convert distance graph to weight graph for infomap"""
@@ -90,3 +90,22 @@ def heat_wavelet_distance(G1: ig.Graph, G2: ig.Graph, tau=1.2, normalised=True):
     DTD = Del.T @ Del
 
     return DTD.trace() / N
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('input_snapshots', metavar="FOLDER")
+    parser.add_argument('method', choices=['infomap'])
+    parser.add_argument('-c', '--convert', action='store_true', help="if True, takes the reciprocal of the edge weights")
+    parser.add_argument('-o', '--output', default='cluster_by_name.csv')
+
+    args = parser.parse_args()
+    match args.method:
+        case 'infomap':
+            clusters = multi_infomap(args.input_snapshots, conv=args.convert)
+        case _:
+            raise ValueError(f"Unknown method {args.method}")
+    clusters.write_csv(args.output)
+
+if __name__ == "__main__":
+    main()
