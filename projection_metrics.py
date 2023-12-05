@@ -59,7 +59,7 @@ def aggregate_edges(included_edges, time=None, method='sum'):
         edge_df = pl.from_dicts([
             {'source': e.source_vertex['loc'], 'target': e.target_vertex['loc'], 'weight': e['weight']}
             for e in included_edges
-        ]).groupby('source', 'target')
+        ]).group_by('source', 'target')
 
         if method == 'sum':
             edge_df = edge_df.sum().to_dicts()

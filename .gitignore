@@ -8,3 +8,4 @@
 !sankey.py
 !.pipeline.yml
 !edgelist_to_lgl.sh
+!temporal_coherence.py
