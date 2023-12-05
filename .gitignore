@@ -9,3 +9,4 @@
 !.pipeline.yml
 !edgelist_to_lgl.sh
 !temporal_coherence.py
+!on_network_simulation.py

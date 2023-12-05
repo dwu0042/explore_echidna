@@ -1,0 +1,210 @@
+"""High dim metapopulation SIS model for AMR infection"""
+"""Discrete time simulation"""
+"""for the purpose of determining if temporality matters via simulaiton study"""
+import numpy as np
+import igraph as ig
+from functools import wraps
+
+class Simulation():
+    def __init__(self, hospital_sizes, transition_matrix, parameters, dt=1.0):
+        self.state = np.zeros((len(hospital_sizes) * 2, 1))
+        for ii, N in enumerate(hospital_sizes):
+            self.state[2*ii,0] = N
+        self.PP = transition_matrix - np.diag(np.diag(transition_matrix)) # remove the diagonal
+        self.parameters = parameters
+        self.dt = dt
+        self.history = self.state
+        self.ts = [0.0]
+
+    def reset(self):
+        self.state = self.history[:,0:1]
+        self.history = self.state
+        self.ts = [0.0]
+
+    def seed(self, n_seed=1, wipe=True, rng_seed=None):
+        # seed will wipe the memory by default
+        self.rng = np.random.default_rng(rng_seed)
+
+        if wipe:
+            self.reset()
+
+        for _ in range(n_seed):
+            hospital = int(self.rng.uniform(0, len(self.state)/2))
+            self.state[hospital*2,0] -= 1
+            self.state[hospital*2+1,0] += 1
+
+    def step(self):
+        beta, gamma, dissoc = self.parameters
+        S = self.state[::2,:]
+        I = self.state[1::2,:]
+
+        # we note we get _rates_
+        # I will model as Poisson, w/ fixed rates wrt the start of the step
+        n_inf = self.rng.poisson(beta * S * I / (S + I) * self.dt)
+        n_rec = self.rng.poisson(gamma * I * self.dt)
+        # here we take the transition matrix and need to ensure that poisson() gets +ve rates
+        # in theory, the transition matrix should be all +ve; the computational tradeoff is minimal
+        mov_S = self.PP * S
+        M_mov_S = self.rng.poisson(dissoc * np.abs(mov_S) * self.dt) * np.sign(mov_S)
+        # A_ij is from i to j; col sum gives incoming, row sum gives outgoing
+        n_mov_S = (M_mov_S.sum(axis=0) - M_mov_S.sum(axis=1)).reshape(S.shape)
+        mov_I = self.PP * I
+        M_mov_I = self.rng.poisson(dissoc * np.abs(mov_I) * self.dt) * np.sign(mov_I)
+        n_mov_I = (M_mov_I.sum(axis=0) - M_mov_I.sum(axis=1)).reshape(I.shape)
+        # clipping values at zero to prevent pathological behaviour
+        # this might leak ppl out of/into the system if we are not careful, but it'll be quite small
+        S_new = np.clip(S - n_inf + n_rec + n_mov_S, 0, None)
+        I_new = np.clip(I + n_inf - n_rec + n_mov_I, 0, None)
+
+        return np.hstack([S_new, I_new]).flatten().reshape((-1, 1))
+    
+    def simulate(self, until=100): 
+        for ti in range(int(until / self.dt)):
+            self.state = self.step()
+            self.history = np.hstack([self.history, self.state])
+            self.ts.append(self.ts[-1] + self.dt)
+
+class SimulationODE(Simulation):
+
+    def __init__(self, hospital_sizes, transition_matrix, parameters, dt=1.0):
+        super().__init__(hospital_sizes, transition_matrix, parameters, dt=dt)
+        self.PP = self.PP - np.diag(np.sum(self.PP, axis=0))
+
+    def step(self):
+        beta, gamma, dissoc = self.parameters
+        S = self.state[::2,:]
+        I = self.state[1::2,:]
+        dS = - beta * S * I / (S + I) + gamma * I + dissoc * self.PP @ S
+        dI = beta * S * I / (S + I) - gamma * I + dissoc * self.PP @ I
+        S_new = np.clip(S + self.dt * dS, 0, None)
+        I_new = np.clip(I + self.dt * dI, 0, None)
+
+        return np.hstack([S_new, I_new]).flatten().reshape((-1, 1))
+
+class TemporalNetworkSimulation(Simulation):
+    """Simulation on a temporal network
+     Has a convenience method to map a temporal network loaded in with loc and time attrs on nodes to a transition matrix (snapshot representation)
+     Performs stepping for the temporal network assuming that dynamics clump at the start of the snapshot time, allows for edges that move both loc and time
+     """
+    def __init__(self, hospital_size_mapping, network, parameters):
+        # step size is determined by the temporal network
+        transition_matrix, dt, dimensions = self.map_network_to_transition_matrix(hospital_size_mapping, network)
+        self.DIMENSIONS = dimensions
+        hospital_sizes = [v for _,v in sorted(hospital_size_mapping.items())]
+        hospital_sizes = np.concatenate([hospital_sizes, np.zeros(transition_matrix.shape[0] - len(hospital_sizes))])
+        super().__init__(hospital_sizes, transition_matrix, parameters, dt=dt)
+        self.current_stage = 0
+
+    @staticmethod
+    def map_network_to_transition_matrix(hospital_size_mapping: dict[int, int], network: ig.Graph):
+        # setup an all leave situation
+        times = {k: i for i,k in enumerate(set(network.vs['time']))}
+        NT = len(times)
+        times_by_order = sorted(times.keys())
+        DT = times_by_order[1] - times_by_order[0] # assumes regular time grid
+        locs = {k: i for i,k in enumerate(hospital_size_mapping)}
+        NLOC = len(locs)
+        transition_matrix = np.zeros((NT * NLOC, NT * NLOC))
+
+        # structure is blocks where we have all locs at time 0, then all locs at time 1 etc
+        for node in network.vs:
+            nd_idx = NLOC*times[node['time']] + locs[node['loc']]
+            out_rate = 0
+            for edge in node.out_edges():
+                if edge.target == node.index:
+                    continue
+                else:
+                    other = network.vs[edge.target]
+                    target_idx = NLOC*times[other['time']] + locs[other['loc']]
+                    out_num = edge['weight'] / hospital_size_mapping[node['loc']] / DT
+                    transition_matrix[nd_idx, target_idx] = out_num
+                    out_rate += out_num
+
+        return transition_matrix, DT, {'NLOC': NLOC, 'NT': NT}
+    
+    def step(self):
+        beta, gamma = self.parameters
+        NLOC, NT = self.DIMENSIONS['NLOC'], self.DIMENSIONS['NT']
+        # these are discrete steps that match the temporal network
+        tidx = int(self.ts[-1] / self.dt)
+        # substep 1: perform freezing for the future
+        XTHIS = 2 * tidx * NLOC
+        XNEXT = 2 * (tidx + 1) * NLOC
+        PTHIS = tidx * NLOC
+        PNEXT = (tidx + 1) * NLOC
+        new_state = np.array(self.state)
+        current_state = new_state[XTHIS:XNEXT, 0:1] # by slicing, this creates a view, not a copy
+        out_transitions = self.PP[PTHIS:PNEXT, PNEXT:] # these have units movers/hospital size per time unit
+        # reshape here to get the axis alignment
+        avg_freeze_rate = out_transitions[:,:,np.newaxis] * current_state.reshape((-1, 1, 2))
+        actual_freezers = self.rng.poisson(avg_freeze_rate * self.dt)
+        outgoing_time_travellers = actual_freezers.sum(axis=1).reshape((-1, 1))
+        incoming_time_travellers = actual_freezers.sum(axis=0).reshape((-1, 1))
+        # when adjusting states, we ensure that the num of ppl leaving is capped at the current remaining pop
+        new_state[XTHIS:XNEXT,0:1] -= np.clip(outgoing_time_travellers, 0, new_state[XTHIS:XNEXT,0:1])
+        new_state[XNEXT:,0:1] += incoming_time_travellers
+        # substep 2: perform intra-timestep operations (movements/infection)
+        S = current_state[::2]
+        I = current_state[1::2]
+        n_inf = self.rng.poisson(beta * S * I / (S + I) * self.dt)
+        n_rec = self.rng.poisson(gamma * I * self.dt)
+        mov_S = self.PP[PTHIS:PNEXT, PTHIS:PNEXT] * S
+        M_mov_S = self.rng.poisson(np.abs(mov_S) * self.dt) * np.sign(mov_S)
+        n_mov_S = (M_mov_S.sum(axis=0) - M_mov_S.sum(axis=1)).reshape(S.shape)
+        mov_I = self.PP[PTHIS:PNEXT, PTHIS:PNEXT] * I
+        M_mov_I = self.rng.poisson(np.abs(mov_I) * self.dt) * np.sign(mov_I)
+        n_mov_I = (M_mov_I.sum(axis=0) - M_mov_I.sum(axis=1)).reshape(I.shape)
+        # clipping values at zero to prevent pathological behaviour
+        # this might leak ppl out of/into the system if we are not careful, but it'll be quite small
+        S_new = np.clip(S - n_inf + n_rec + n_mov_S, 0, None)
+        I_new = np.clip(I + n_inf - n_rec + n_mov_I, 0, None)
+        current_new = np.hstack([S_new, I_new]).flatten().reshape((-1, 1))
+        # substep 3: shove along the current state
+        XNEXTNEXT = 2 * (tidx + 2) * NLOC
+        new_state[XTHIS:XNEXT, 0:1] = 0
+        new_state[XNEXT:XNEXTNEXT, 0:1] += current_new
+        return new_state
+
+    def seed(self, n_seed=1, wipe=True, rng_seed=None):
+        # seed will wipe the memory by default
+        self.rng = np.random.default_rng(rng_seed)
+
+        if wipe:
+            self.reset()
+
+        for _ in range(n_seed):
+            hospital = int(self.rng.uniform(0, self.DIMENSIONS['NLOC']))
+            self.state[hospital*2,0] -= 1
+            self.state[hospital*2+1,0] += 1
+
+
+
+def stoch_sim_test():
+    sim = Simulation(
+            [100, 300, 200], 
+            np.array([
+                [0, 0.1, 0.05,], 
+                [0.01, 0, 0.1], 
+                [0.04, 0.1, 0]
+            ]), 
+            [2, 1.6, 0.2], 
+            dt=0.1
+        )
+    sim.seed(1)
+    sim.simulate(20)
+
+def temporal_test():
+    import graph_importer as gim
+    sim = TemporalNetworkSimulation(
+        [200, 300, 100],
+        gim.make_graph('tiny_temporal_network.lgl'),
+        [20., 16.]
+    )
+    sim.seed(1)
+    sim.simulate(2)
+
+def main():
+    temporal_test()
+
+if __name__ == "__main__":
+    main()
