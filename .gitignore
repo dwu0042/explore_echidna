@@ -10,3 +10,4 @@
 !edgelist_to_lgl.sh
 !temporal_coherence.py
 !on_network_simulation.py
+!examine_transfers_for_sizes.py

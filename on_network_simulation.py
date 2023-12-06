@@ -3,7 +3,8 @@
 """for the purpose of determining if temporality matters via simulaiton study"""
 import numpy as np
 import igraph as ig
-from functools import wraps
+import glob
+import pathlib
 
 class Simulation():
     def __init__(self, hospital_sizes, transition_matrix, parameters, dt=1.0):
@@ -178,6 +179,55 @@ class TemporalNetworkSimulation(Simulation):
             self.state[hospital*2+1,0] += 1
 
 
+class SnapshotNetworkSimulation(Simulation):
+    """Extends Simulation in order to allow for swapping out of the transition matrix (PP)
+    """
+
+    def __init__(self, hospital_size_mapping, snapshots, parameters, dt=1.0):
+        self.hospital_ordering = self.order_hospital_size_mapping(hospital_size_mapping)
+        self.hospital_sizes = [size for _, size in sorted(hospital_size_mapping.items())]
+        self.snapshot_times = sorted(snapshots.keys())
+        self.snapshot_durations = np.diff(self.snapshot_times)
+        self.transition_matrices = [
+            self.make_transition_matrix_from_graph(snapshots[snapkey], duration) 
+            for snapkey, duration in zip(self.snapshot_times, self.snapshot_durations)
+        ]
+        super().__init__(self.hospital_sizes, self.transition_matrices[0], parameters, dt=dt)
+        self.current_index = 0
+
+    @staticmethod
+    def order_hospital_size_mapping(hospital_size_mapping):
+        return {int(k):i for i,k in enumerate(sorted(hospital_size_mapping.keys()))}
+
+    def step(self):
+        step_res = super().step()
+        if self.ts[-1] >= self.snapshot_times[self.current_index + 1]:
+            # swap in new transition matrix
+            self.current_index += 1
+            self.PP = self.transition_matrices[self.current_index]
+        return step_res
+
+    def make_transition_matrix_from_graph(self, graph: ig.Graph, duration: float):
+
+        graph_paste_order = [self.hospital_ordering[int(k)] for k in graph.vs['name']]
+        A = graph.get_adjacency(attribute='weight')
+        MAXN = max(self.hospital_ordering.values()) + 1
+        ordered_adj = np.zeros((MAXN, MAXN))
+        # fill the matrix with correclty pivoted A data
+        # np.ix_ creates the mesh indices to do the correct index mapping
+        ordered_adj[np.ix_(graph_paste_order, graph_paste_order)] = np.array(A.data)
+        # no need to trim diag, that gets done by the super().__init__
+        # here we massage the hospital sizes, and divide over to get probability of movement over the time step
+        transition_matrix = ordered_adj / np.reshape(self.hospital_sizes, ((-1, 1))) / duration
+        return transition_matrix
+
+    @staticmethod
+    def load_snapshots(rootpath):
+        snapshots = dict()
+        for graph in glob.glob(f"{rootpath}/*.graphml"):
+            name = int(pathlib.Path(graph).stem)
+            snapshots[name] = ig.Graph.Read_GraphML(graph)
+        return snapshots 
 
 def stoch_sim_test():
     sim = Simulation(
