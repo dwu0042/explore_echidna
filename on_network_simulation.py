@@ -6,11 +6,12 @@ import igraph as ig
 import glob
 import pathlib
 
+_EPS = 1e-14
+
 class Simulation():
     def __init__(self, hospital_sizes, transition_matrix, parameters, dt=1.0):
-        self.state = np.zeros((len(hospital_sizes) * 2, 1))
-        for ii, N in enumerate(hospital_sizes):
-            self.state[2*ii,0] = N
+        self.state = np.zeros((len(hospital_sizes), 1))
+        self.N = np.array(hospital_sizes).reshape((-1, 1))
         self.PP = transition_matrix - np.diag(np.diag(transition_matrix)) # remove the diagonal
         self.parameters = parameters
         self.dt = dt
@@ -30,57 +31,49 @@ class Simulation():
             self.reset()
 
         for _ in range(n_seed):
-            hospital = int(self.rng.uniform(0, len(self.state)/2))
-            self.state[hospital*2,0] -= 1
-            self.state[hospital*2+1,0] += 1
+            hospital = int(self.rng.uniform(0, len(self.state)))
+            self.state[hospital,0] += 1
 
     def step(self):
         beta, gamma, dissoc = self.parameters
-        S = self.state[::2,:]
-        I = self.state[1::2,:]
+        # S = self.state[::2,:]
+        # I = self.state[1::2,:]
+        I = self.state
 
         # we note we get _rates_
         # I will model as Poisson, w/ fixed rates wrt the start of the step
-        n_inf = self.rng.poisson(beta * S * I / (S + I) * self.dt)
+        n_inf = self.rng.poisson(beta * (self.N - I) * I / self.N * self.dt)
         n_rec = self.rng.poisson(gamma * I * self.dt)
         # here we take the transition matrix and need to ensure that poisson() gets +ve rates
         # in theory, the transition matrix should be all +ve; the computational tradeoff is minimal
-        mov_S = self.PP * S
-        M_mov_S = self.rng.poisson(dissoc * np.abs(mov_S) * self.dt) * np.sign(mov_S)
-        # A_ij is from i to j; col sum gives incoming, row sum gives outgoing
-        n_mov_S = (M_mov_S.sum(axis=0) - M_mov_S.sum(axis=1)).reshape(S.shape)
         mov_I = self.PP * I
         M_mov_I = self.rng.poisson(dissoc * np.abs(mov_I) * self.dt) * np.sign(mov_I)
+        # A_ij is from i to j; col sum gives incoming, row sum gives outgoing
         n_mov_I = (M_mov_I.sum(axis=0) - M_mov_I.sum(axis=1)).reshape(I.shape)
         # clipping values at zero to prevent pathological behaviour
         # this might leak ppl out of/into the system if we are not careful, but it'll be quite small
-        S_new = np.clip(S - n_inf + n_rec + n_mov_S, 0, None)
-        I_new = np.clip(I + n_inf - n_rec + n_mov_I, 0, None)
+        I_new = np.clip(I + n_inf - n_rec + n_mov_I, 0, self.N)
 
-        return np.hstack([S_new, I_new]).flatten().reshape((-1, 1))
+        return I_new
     
     def simulate(self, until=100): 
         for ti in range(int(until / self.dt)):
             self.state = self.step()
             self.history = np.hstack([self.history, self.state])
             self.ts.append(self.ts[-1] + self.dt)
+            if sum(self.state) < 1:
+                print(f"Early termination: {self.ts[-1] = }")
+                break
 
 class SimulationODE(Simulation):
 
-    def __init__(self, hospital_sizes, transition_matrix, parameters, dt=1.0):
-        super().__init__(hospital_sizes, transition_matrix, parameters, dt=dt)
-        self.PP = self.PP - np.diag(np.sum(self.PP, axis=0))
-
     def step(self):
         beta, gamma, dissoc = self.parameters
-        S = self.state[::2,:]
-        I = self.state[1::2,:]
-        dS = - beta * S * I / (S + I) + gamma * I + dissoc * self.PP @ S
-        dI = beta * S * I / (S + I) - gamma * I + dissoc * self.PP @ I
-        S_new = np.clip(S + self.dt * dS, 0, None)
-        I_new = np.clip(I + self.dt * dI, 0, None)
+        I = self.state
+        dI = beta * (self.N - I) * I / self.N - gamma * I + dissoc * self.PP @ I
+        I_new = np.clip(I + self.dt * dI, 0, self.N)
 
-        return np.hstack([S_new, I_new]).flatten().reshape((-1, 1))
+        return I_new
 
 class TemporalNetworkSimulation(Simulation):
     """Simulation on a temporal network
@@ -252,6 +245,17 @@ def temporal_test():
     )
     sim.seed(1)
     sim.simulate(2)
+
+def full_snapshot_sim():
+    import graph_importer as gim
+    import examine_transfers_for_sizes as esz
+
+    G = gim.make_graph("./concordant_networks/temponet_14_365.lgl")
+    rough_hosp_size = esz.rough_hospital_size(G)
+    snapshots = SnapshotNetworkSimulation.load_snapshots("./conc_tempo_14_snapshots/")
+    sim = SnapshotNetworkSimulation(rough_hosp_size, snapshots, [2.0, 1.6, 1.0], dt=1)
+    sim.seed(1)
+    sim.simulate(20)
 
 def main():
     temporal_test()

@@ -1,5 +1,6 @@
 import igraph as ig
 from collections import defaultdict
+import numpy as np
 
 def determine_self_loops(G: ig.Graph):
     self_weights = defaultdict(int)
@@ -18,8 +19,9 @@ def determine_self_prop(G: ig.Graph):
     out_edges = determine_out_edges(G)
     return {loc: self_loops[loc]/out_edges[loc] for loc in self_loops}
 
-def rough_hospital_size(G: ig.Graph):
+def rough_hospital_size(G: ig.Graph, round_precision=16, clip_under=5):
     PROP_READMIT = 0.42 # persons/admission
     CHURN_RATE = 1 # hospitals/day
     TIME_SCALE = 3652 # days
-    return {loc: (sz / PROP_READMIT / TIME_SCALE / CHURN_RATE) for loc,sz in determine_out_edges(G).items()}
+    return {loc: np.round(np.clip(sz / PROP_READMIT / TIME_SCALE / CHURN_RATE, clip_under, None), round_precision) 
+            for loc,sz in determine_out_edges(G).items()}
