@@ -5,6 +5,7 @@ import numpy as np
 import igraph as ig
 import glob
 import pathlib
+from scipy import sparse 
 
 _EPS = 1e-14
 
@@ -98,23 +99,29 @@ class TemporalNetworkSimulation(Simulation):
         DT = times_by_order[1] - times_by_order[0] # assumes regular time grid
         locs = {k: i for i,k in enumerate(hospital_size_mapping)}
         NLOC = len(locs)
-        transition_matrix = np.zeros((NT * NLOC, NT * NLOC))
+        
+        txn_matrix_data, txn_matrix_i, txn_matrix_j = [], [], []
 
         # structure is blocks where we have all locs at time 0, then all locs at time 1 etc
         for node in network.vs:
             nd_idx = NLOC*times[node['time']] + locs[node['loc']]
-            out_rate = 0
+            # nd_idx = (locs[node['loc']], times[node['time']])
+
             for edge in node.out_edges():
                 if edge.target == node.index:
                     continue
                 else:
                     other = network.vs[edge.target]
+                    # target_idx = (locs[other['loc']], times[other['time']])
                     target_idx = NLOC*times[other['time']] + locs[other['loc']]
                     out_num = edge['weight'] / hospital_size_mapping[node['loc']] / DT
-                    transition_matrix[nd_idx, target_idx] = out_num
-                    out_rate += out_num
+                    txn_matrix_data.append(out_num)
+                    txn_matrix_i.append(nd_idx)
+                    txn_matrix_j.append(target_idx)
 
-        return transition_matrix, DT, {'NLOC': NLOC, 'NT': NT}
+        transition_matrix = sparse.coo_matrix((txn_matrix_data, (txn_matrix_i, txn_matrix_j)), shape=(NLOC*NT, NLOC*NT))
+
+        return transition_matrix.tocsr(), DT, {'NLOC': NLOC, 'NT': NT}
     
     def step(self):
         beta, gamma = self.parameters
