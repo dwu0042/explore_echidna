@@ -178,6 +178,13 @@ class TemporalNetworkSimulation(Simulation):
             self.state[hospital*2,0] -= 1
             self.state[hospital*2+1,0] += 1
 
+    def extract_history(self):
+        bins = np.arange(0, self.ts[-1]+1, self.DT)
+        # map things so that we capture the correct boundaries, and also capture the initial condition
+        tidxs = np.clip(np.digitize(self.ts, bins, right=True) - 1, 0, None)
+        L = self.DIMENSIONS['NLOC']
+        history = np.hstack([self.history[tidx*L:(tidx+1)*L, i:i+1] for i, tidx in enumerate(tidxs)])
+        return history
 
 class SnapshotNetworkSimulation(Simulation):
     """Extends Simulation in order to allow for swapping out of the transition matrix (PP)
