@@ -25,3 +25,16 @@ def rough_hospital_size(G: ig.Graph, round_precision=16, clip_under=5):
     TIME_SCALE = 3652 # days
     return {loc: np.round(np.clip(sz / PROP_READMIT / TIME_SCALE / CHURN_RATE, clip_under, None), round_precision) 
             for loc,sz in determine_out_edges(G).items()}
+
+def quick_write(sizes, tofile):
+    with open(tofile, 'w') as fp:
+        fp.write("hospital,size\n")
+        for h,s in sizes.items():
+            fp.write(f"{h},{s}\n")
+
+def quick_read(filename):
+    with open(filename, 'r') as fp:
+        data = fp.read()
+    # magic 1:-1 to skip header line and footer (final) line 
+    return {int(h): int(s) for h,s in (x.split(',') for x in data.split('\n')[1:-1])}
+
