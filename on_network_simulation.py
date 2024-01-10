@@ -27,13 +27,17 @@ class Simulation():
         self.PP = transition_matrix
         self.parameters = parameters
         self.dt = dt
-        self.history = self.state
+        self._history = [self.state]
         self.ts = [0.0]
+
+    @property
+    def history(self):
+        return np.hstack(self._history)
 
     def reset(self):
         """Reset the state of the simulation"""
-        self.state = self.history[:,0:1]
-        self.history = self.state
+        self.state = self._history[0]
+        self._history = [self.state]
         self.ts = [0.0]
 
     def seed(self, n_seedings=1, seed_value=1, wipe=True, rng_seed=None):
@@ -81,9 +85,9 @@ class Simulation():
         Can terminate early if the system has no more infected individuals"""
         for ti in range(int(until / self.dt)):
             self.state = self.step()
-            self.history = np.hstack([self.history, self.state])
+            self._history.append(self.state)
             self.ts.append(self.ts[-1] + self.dt)
-            if sum(self.state) < 1:
+            if np.sum(self.state) < 1:
                 print(f"Early termination: {self.ts[-1] = }")
                 break
 
@@ -209,12 +213,13 @@ class TemporalNetworkSimulation(Simulation):
             hospital = int(self.rng.uniform(0, self.DIMENSIONS['NLOC']))
             self.state[hospital,0] += seed_value
 
-    def extract_history(self):
+    @property
+    def history(self):
         bins = np.arange(0, self.ts[-1]+1, self.DT)
         # map things so that we capture the correct boundaries, and also capture the initial condition
         tidxs = np.clip(np.digitize(self.ts, bins, right=True) - 1, 0, None)
         L = self.DIMENSIONS['NLOC']
-        history = np.hstack([self.history[tidx*L:(tidx+1)*L, i:i+1] for i, tidx in enumerate(tidxs)])
+        history = np.hstack([self._history[i][tidx*L:(tidx+1)*L,:] for i, tidx in enumerate(tidxs)])
         return history
 
 class SnapshotNetworkSimulation(Simulation):
