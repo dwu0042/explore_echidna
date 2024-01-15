@@ -6,6 +6,8 @@ import igraph as ig
 import glob
 import pathlib
 from scipy import sparse 
+from util import Iden
+from typing import Mapping, Iterable, Hashable
 
 _EPS = 1e-14
 
@@ -228,7 +230,8 @@ class SnapshotNetworkSimulation(Simulation):
 
     def __init__(self, hospital_size_mapping, snapshots, parameters, dt=1.0):
         self.hospital_ordering = self.order_hospital_size_mapping(hospital_size_mapping)
-        self.hospital_sizes = [size for _, size in sorted(hospital_size_mapping.items())]
+        self.hospital_lookup = {v: k for k,v in self.hospital_ordering}
+        self.hospital_sizes = [hospital_size_mapping[i] for i in self.hospital_lookup.values()]
         self.snapshot_times = sorted(snapshots.keys())
         self.snapshot_durations = np.diff(self.snapshot_times)
         self.transition_matrices = [
@@ -252,17 +255,15 @@ class SnapshotNetworkSimulation(Simulation):
 
     def make_transition_matrix_from_graph(self, graph: ig.Graph, duration: float):
 
-        graph_paste_order = [self.hospital_ordering[int(k)] for k in graph.vs['name']]
-        A = graph.get_adjacency(attribute='weight')
-        MAXN = max(self.hospital_ordering.values()) + 1
-        ordered_adj = np.zeros((MAXN, MAXN))
-        # fill the matrix with correclty pivoted A data
-        # np.ix_ creates the mesh indices to do the correct index mapping
-        ordered_adj[np.ix_(graph_paste_order, graph_paste_order)] = np.array(A.data)
-        # no need to trim diag, that gets done by the super().__init__
-        # here we massage the hospital sizes, and divide over to get probability of movement over the time step
-        transition_matrix = ordered_adj / np.reshape(self.hospital_sizes, ((-1, 1))) / duration
-        return transition_matrix
+        return transition_matrix_from_graph(
+            graph=graph,
+            ordering=self.hospital_ordering,
+            scaling_per_node=self.hospital_sizes,
+            global_scaling=duration,
+            ordering_key='name',
+            adjacency_attribute='weight',
+            matrix_size=max(self.hospital_ordering.values()) + 1
+        )
 
     @staticmethod
     def load_snapshots(rootpath):
@@ -271,6 +272,34 @@ class SnapshotNetworkSimulation(Simulation):
             name = int(pathlib.Path(graph).stem)
             snapshots[name] = ig.Graph.Read_GraphML(graph)
         return snapshots
+
+
+def transition_matrix_from_graph(graph: ig.Graph, ordering: Mapping=None, scaling_per_node: Iterable=None, global_scaling: float=1, ordering_key: Hashable=None, adjacency_attribute: Hashable=None, matrix_size: int=None):
+    """Given a Graph, generates the associated transition matrix
+    
+    Allows for arbitrary ordering given by"""
+
+    if ordering is None:
+        ordering = Iden() # implicit identitiy mapping
+    if ordering_key is None:
+        graph_order_base = graph.vs.indices
+    else:
+        graph_order_base = graph.vs[ordering_key]
+
+    graph_paste_order = [ordering[int(k)] for k in graph_order_base]
+    A = graph.get_adjacency(attribute=adjacency_attribute)
+    if matrix_size is None:
+        MAXN = len(graph_paste_order)
+    else:
+        MAXN = matrix_size
+    if scaling_per_node is None:
+        scaling_per_node = np.ones((MAXN, 1))
+    ordered_adj = np.zeros((MAXN, MAXN))
+    # fill the matrix with correclty pivoted A data
+    # np.ix_ creates the mesh indices to do the correct index mapping
+    ordered_adj[np.ix_(graph_paste_order, graph_paste_order)] = np.array(A.data)
+    transition_matrix = ordered_adj / np.reshape(scaling_per_node, ((-1, 1))) / global_scaling
+    return transition_matrix
 
 def stoch_sim_test():
     sim = Simulation(
