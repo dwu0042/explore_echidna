@@ -152,6 +152,43 @@ class TemporalNetworkSimulation(Simulation):
         return transition_matrix.tocsr(), DT, {'NLOC': NLOC, 'NT': NT}
     
     def step(self):
+        """
+        sketch of step for temporal
+
+
+        We have the current_state which is a vec of Hx1
+        We have the time travellers which is a Tx(Hx1)vec of Hx1 vecs, which are indexed by their time indexed
+        We have a running time index
+        We update the running time index
+
+
+
+        STEP():
+            compute current time index
+            SUB(): reintroduce time travellers
+                lookup time travellers[current time index]
+                compute hazard():
+                    (next tidx) * DT - (current time + timestep/3)
+                draw poisson(hazard) -> movers
+                subtract movers from time travellers [current time index]
+                    ensure that movers < time travellers
+                add movers to current state
+            
+            SUB(): move out time travellers
+                get the part of the transition matrix which is important
+                sample the poisson leav ers
+                adjust state
+            
+            SUB(): perform infection stuff
+                compute the number of new infected
+                compute the number of recoveries (health)
+                compute the number of removals (length of stay)
+                update state
+
+            SUB(): update time travellers
+                compute the number of recoveries (health)
+        
+        """
         beta, gamma = self.parameters
         NLOC, NT = self.DIMENSIONS['NLOC'], self.DIMENSIONS['NT']
         N = self.N[:NLOC]
@@ -163,19 +200,23 @@ class TemporalNetworkSimulation(Simulation):
         XTHIS = tidx * NLOC
         XNEXT = (tidx + 1) * NLOC
         new_state = np.array(self.state)
+        # substep 1. move previous individuals over if we stepped over a DT
         if self.current_stage < tidx:
-            # move along time travellers from pervious state according to uniform distribution
             XPREV = self.current_stage * NLOC
             # uniform distribution
-            rem_time = tidx * self.DT + self.DT - self.ts[-1] - self.dt/3
-            print(rem_time)
-            hazard = new_state[XPREV:XTHIS, 0:1] / rem_time * self.dt
-            n_travellers_moving = self.rng.poisson(lam=hazard)
-            n_travellers_moving = np.clip(n_travellers_moving, 0, new_state[XPREV:XTHIS, 0:1])
-            new_state[XTHIS:XNEXT, 0:1] += n_travellers_moving
+            new_state[XTHIS:XNEXT, 0:1] += new_state[XPREV:XTHIS, 0:1]
             new_state[XTHIS:XNEXT, 0:1] = np.clip(new_state[XTHIS:XNEXT, 0:1], 0, N)
             new_state[XPREV:XTHIS, 0:1] -= n_travellers_moving
             self.current_stage += 1
+
+        # substep 2. reintroduce time travellers
+            
+        rem_time = tidx * self.DT + self.DT - self.ts[-1] - self.dt/3
+        print(rem_time)
+        hazard = new_state[XPREV:XTHIS, 0:1] / rem_time * self.dt
+        n_travellers_moving = self.rng.poisson(lam=hazard)
+
+            
         current_state = new_state[XTHIS:XNEXT, 0:1] # by slicing, this creates a view, not a copy
 
         # substep 2: move people out that move into the future
