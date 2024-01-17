@@ -164,11 +164,17 @@ class TemporalNetworkSimulation(Simulation):
         XNEXT = (tidx + 1) * NLOC
         new_state = np.array(self.state)
         if self.current_stage < tidx:
-            # move along prev state
+            # move along time travellers from pervious state according to uniform distribution
             XPREV = self.current_stage * NLOC
-            new_state[XTHIS:XNEXT, 0:1] += new_state[XPREV:XTHIS, 0:1]
+            # uniform distribution
+            rem_time = tidx * self.DT + self.DT - self.ts[-1] - self.dt/3
+            print(rem_time)
+            hazard = new_state[XPREV:XTHIS, 0:1] / rem_time * self.dt
+            n_travellers_moving = self.rng.poisson(lam=hazard)
+            n_travellers_moving = np.clip(n_travellers_moving, 0, new_state[XPREV:XTHIS, 0:1])
+            new_state[XTHIS:XNEXT, 0:1] += n_travellers_moving
             new_state[XTHIS:XNEXT, 0:1] = np.clip(new_state[XTHIS:XNEXT, 0:1], 0, N)
-            new_state[XPREV:XTHIS, 0:1] = 0
+            new_state[XPREV:XTHIS, 0:1] -= n_travellers_moving
             self.current_stage += 1
         current_state = new_state[XTHIS:XNEXT, 0:1] # by slicing, this creates a view, not a copy
 
@@ -230,7 +236,7 @@ class SnapshotNetworkSimulation(Simulation):
 
     def __init__(self, hospital_size_mapping, snapshots, parameters, dt=1.0):
         self.hospital_ordering = self.order_hospital_size_mapping(hospital_size_mapping)
-        self.hospital_lookup = {v: k for k,v in self.hospital_ordering}
+        self.hospital_lookup = {v: k for k,v in self.hospital_ordering.items()}
         self.hospital_sizes = [hospital_size_mapping[i] for i in self.hospital_lookup.values()]
         self.snapshot_times = sorted(snapshots.keys())
         self.snapshot_durations = np.diff(self.snapshot_times)
