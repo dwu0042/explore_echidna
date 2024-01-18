@@ -113,10 +113,9 @@ class TemporalNetworkSimulation(Simulation):
         transition_matrix, net_dt, dimensions = self.map_network_to_transition_matrix(hospital_size_mapping, network)
         self.DIMENSIONS = dimensions
         self.DT = net_dt
-        hospital_sizes = [v for _,v in sorted(hospital_size_mapping.items())]
-        hospital_sizes = np.concatenate([hospital_sizes, np.zeros(transition_matrix.shape[0] - len(hospital_sizes))])
+        hospital_sizes = np.asanyarray([v for _,v in sorted(hospital_size_mapping.items())])
         super().__init__(hospital_sizes, transition_matrix, parameters, dt=dt, remove_diagonal=False)
-        self.current_stage = 0
+        self.time_travellers = np.zeros((self.DIMENSIONS['NLOC'], self.DIMENSIONS['NT']))
 
     @staticmethod
     def map_network_to_transition_matrix(hospital_size_mapping: dict[int, int], network: ig.Graph):
@@ -191,47 +190,39 @@ class TemporalNetworkSimulation(Simulation):
         """
         beta, gamma = self.parameters
         NLOC, NT = self.DIMENSIONS['NLOC'], self.DIMENSIONS['NT']
-        N = self.N[:NLOC]
+        N = self.N
 
         # these are discrete steps that match the temporal network
         # jitter up by small number for computer epsilon
-        tidx = int(self.ts[-1] / self.DT + 1e-8)
-        # substep 1: check starting state
-        XTHIS = tidx * NLOC
-        XNEXT = (tidx + 1) * NLOC
-        new_state = np.array(self.state)
-        # substep 1. move previous individuals over if we stepped over a DT
-        if self.current_stage < tidx:
-            XPREV = self.current_stage * NLOC
-            # uniform distribution
-            new_state[XTHIS:XNEXT, 0:1] += new_state[XPREV:XTHIS, 0:1]
-            new_state[XTHIS:XNEXT, 0:1] = np.clip(new_state[XTHIS:XNEXT, 0:1], 0, N)
-            new_state[XPREV:XTHIS, 0:1] -= n_travellers_moving
-            self.current_stage += 1
+        t = self.ts[-1]
+        tidx = int(t / self.DT + 1e-8)
+        # new_state = np.array(self.state)
 
-        # substep 2. reintroduce time travellers
-            
-        rem_time = tidx * self.DT + self.DT - self.ts[-1] - self.dt/3
-        print(rem_time)
-        hazard = new_state[XPREV:XTHIS, 0:1] / rem_time * self.dt
-        n_travellers_moving = self.rng.poisson(lam=hazard)
-
-            
-        current_state = new_state[XTHIS:XNEXT, 0:1] # by slicing, this creates a view, not a copy
+        # substep 1. reintroduce time travellers
+        travellers = self.time_travellers[:,tidx:tidx+1]
+        next_time_boundary = (tidx + 1) * self.DT
+        remaining_time = next_time_boundary - t
+        rel_time = remaining_time / self.dt
+        movers = self.rng.binomial(travellers, rel_time)
+        movers = np.clip(movers, 0, travellers)
+        self.time_travellers[:,tidx:tidx+1] = travellers - movers
+        new_state = np.clip(self.state + movers, 0, N)
 
         # substep 2: move people out that move into the future
+        XTHIS = tidx * NLOC
+        XNEXT = (tidx + 1) * NLOC
         out_transitions = self.PP[XTHIS:XNEXT, XNEXT:] # these have units movers/hospital size per time unit
         # reshape here to get the axis alignment
-        avg_freeze_rate = out_transitions * current_state.reshape((-1, 1))
+        avg_freeze_rate = out_transitions * self.state.reshape((-1, 1))
         actual_freezers = sample_poisson_on_sparse(avg_freeze_rate * self.dt, self.rng)
         outgoing_time_travellers = actual_freezers.sum(axis=1).reshape((-1, 1))
         incoming_time_travellers = actual_freezers.sum(axis=0).reshape((-1, 1))
         # when adjusting states, we ensure that the num of ppl leaving is capped at the current remaining pop
-        new_state[XTHIS:XNEXT,0:1] -= np.clip(outgoing_time_travellers, 0, new_state[XTHIS:XNEXT,0:1])
-        new_state[XNEXT:,0:1] += incoming_time_travellers
+        new_state -= np.clip(outgoing_time_travellers, 0, new_state)
+        self.time_travellers[:,(tidx+1):] += incoming_time_travellers.reshape((-1, NLOC)).T
 
         # substep 3: perform intra-timestep operations (movements/infection)
-        I = current_state
+        I = new_state
         n_inf = self.rng.poisson(beta * (N-I) * I / N * self.dt)
         n_rec = self.rng.poisson(gamma * I * self.dt)
         mov_I = (self.PP[XTHIS:XNEXT, XTHIS:XNEXT] * I).todense()
@@ -240,14 +231,12 @@ class TemporalNetworkSimulation(Simulation):
         # clipping values at zero to prevent pathological behaviour
         # this might leak ppl out of/into the system if we are not careful, but it'll be quite small
         I_new = np.clip(I + n_inf - n_rec + n_mov_I, 0, N)
-        current_new = I_new.reshape((-1, 1))
-        new_state[XTHIS:XNEXT, 0:1] = current_new
+        new_state = I_new.reshape((-1, 1))
 
         # substep 4: perform recovery step for time travellers
-        I_future = new_state[XNEXT:,0:1]
-        n_future_rec = self.rng.poisson(gamma * I_future * self.dt)
-        I_future_new = np.clip(I_future - n_future_rec, 0, None)
-        new_state[XNEXT:, 0:1] = I_future_new
+        n_future_rec = self.rng.poisson(gamma * self.time_travellers * self.dt)
+        I_future_new = np.clip(self.time_travellers - n_future_rec, 0, None)
+        self.time_travellers = I_future_new
 
         return new_state
 
@@ -258,18 +247,26 @@ class TemporalNetworkSimulation(Simulation):
         if wipe:
             self.reset()
 
-        for _ in range(n_seedings):
-            hospital = int(self.rng.uniform(0, self.DIMENSIONS['NLOC']))
+        # we want to be a bit more careful about where we seed
+        # we want this node to be connected at t=0
+        NLOC = self.DIMENSIONS['NLOC']
+        valid_hospitals = list(set(self.PP[:NLOC,:].nonzero()[0]))
+
+        for hospital in self.rng.choice(valid_hospitals, n_seedings, replace=False):
             self.state[hospital,0] += seed_value
 
-    @property
-    def history(self):
-        bins = np.arange(0, self.ts[-1]+1, self.DT)
-        # map things so that we capture the correct boundaries, and also capture the initial condition
-        tidxs = np.clip(np.digitize(self.ts, bins, right=True) - 1, 0, None)
-        L = self.DIMENSIONS['NLOC']
-        history = np.hstack([self._history[i][tidx*L:(tidx+1)*L,:] for i, tidx in enumerate(tidxs)])
-        return history
+    def reset(self):
+        super().reset()
+        self.time_travellers = np.zeros_like(self.time_travellers)
+
+    # @property
+    # def history(self):
+    #     bins = np.arange(0, self.ts[-1]+1, self.DT)
+    #     # map things so that we capture the correct boundaries, and also capture the initial condition
+    #     tidxs = np.clip(np.digitize(self.ts, bins, right=True) - 1, 0, None)
+    #     L = self.DIMENSIONS['NLOC']
+    #     history = np.hstack([self._history[i][tidx*L:(tidx+1)*L,:] for i, tidx in enumerate(tidxs)])
+    #     return history
 
 class SnapshotNetworkSimulation(Simulation):
     """Extends Simulation in order to allow for swapping out of the transition matrix (PP)
