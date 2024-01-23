@@ -188,7 +188,7 @@ class TemporalNetworkSimulation(Simulation):
                 compute the number of recoveries (health)
         
         """
-        beta, gamma = self.parameters
+        beta, gamma, eta = self.parameters # transmission, recovery, discharge
         NLOC, NT = self.DIMENSIONS['NLOC'], self.DIMENSIONS['NT']
         N = self.N
 
@@ -202,8 +202,8 @@ class TemporalNetworkSimulation(Simulation):
         travellers = self.time_travellers[:,tidx:tidx+1]
         next_time_boundary = (tidx + 1) * self.DT
         remaining_time = next_time_boundary - t
-        rel_time = remaining_time / self.dt
-        movers = self.rng.binomial(travellers, rel_time)
+        rel_time = np.clip(self.dt / remaining_time, 0, 1)
+        movers = self.rng.binomial(travellers.astype(np.int64), rel_time)
         movers = np.clip(movers, 0, travellers)
         self.time_travellers[:,tidx:tidx+1] = travellers - movers
         new_state = np.clip(self.state + movers, 0, N)
@@ -224,7 +224,7 @@ class TemporalNetworkSimulation(Simulation):
         # substep 3: perform intra-timestep operations (movements/infection)
         I = new_state
         n_inf = self.rng.poisson(beta * (N-I) * I / N * self.dt)
-        n_rec = self.rng.poisson(gamma * I * self.dt)
+        n_rec = self.rng.poisson((gamma + eta) * I * self.dt) # TODO: if eta is hospital based
         mov_I = (self.PP[XTHIS:XNEXT, XTHIS:XNEXT] * I).todense()
         M_mov_I = self.rng.poisson(np.abs(mov_I) * self.dt) * np.sign(mov_I)
         n_mov_I = (M_mov_I.sum(axis=0) - M_mov_I.sum(axis=1)).reshape(I.shape)
@@ -313,8 +313,10 @@ class SnapshotNetworkSimulation(Simulation):
     def load_snapshots(rootpath):
         snapshots = dict()
         for graph in glob.glob(f"{rootpath}/*.graphml"):
+            # safe for windows?
             name = int(pathlib.Path(graph).stem)
-            snapshots[name] = ig.Graph.Read_GraphML(graph)
+            with open(graph, 'r') as graph_file:
+                snapshots[name] = ig.Graph.Read_GraphML(graph_file)
         return snapshots
 
 

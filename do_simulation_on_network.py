@@ -5,6 +5,7 @@ import examine_transfers_for_sizes as esz
 import on_network_simulation as ons
 
 import multiprocessing
+import pickle
 
 def load_temporal_graph(graph_file):
     return gim.make_graph(graph_file)
@@ -70,24 +71,53 @@ def do_snapshot_sim(snapshot_file, size_file=None, graph_file=None, parameters=(
     return snapshot_sim
 
 
-def main(graph_file, snapshot_file, size_file=None, parameters=(0.2, 1./28)):
+def main(graph_file, snapshot_file, size_file=None, parameters=(0.2, 1./365, 1./28)):
     
     temporal_sim = do_temporal_sim(graph_file, size_file, parameters)
     
-    snapshot_sim = do_snapshot_sim(snapshot_file, size_file, graph_file, parameters)
+    # snapshot_sim = do_snapshot_sim(snapshot_file, size_file, graph_file, parameters)
 
-    return temporal_sim, snapshot_sim
+    # return temporal_sim, snapshot_sim
+    return temporal_sim
 
-def multiproc_main(graph_file, snapshot_file, size_file=None, parameters=(0.2, 1./28)):
+def run_batched_temporal_simulations(graph_file, size_file=None, parameters=(0.2, 1./365, 1./28), seed_options=(3, 5), n_runs=10):
 
-    base_graph = load_temporal_graph(graph_file)
-    sizes = find_sizes(size_file, base_graph)
+    graph = gim.make_graph(graph_file)
+    sizes = find_sizes(size_file, graph)
+
+    return [run_temporal_sim(graph, sizes, parameters, *seed_options) for _ in range(n_runs)]
+
+def run_batched_snapshot_simulations(snapshot_file, size_file=None, graph_file=None, parameters=(0.2, 1./28), seed_options=(3, 5), n_runs=10):
+
     snapshots = ons.SnapshotNetworkSimulation.load_snapshots(snapshot_file)
+    assert not (size_file is None and graph_file is None), "Need to provide either the hospital size file, or a temporal graph file."
+    sizes = find_sizes(size_file, graph_file)
 
-    ctx = multiprocessing.get_context('forkserver')
+    return [run_snapshot_sim(sizes, snapshot_file, parameters, *seed_options) for _ in range(n_runs)]
 
+class SimulationResult():
+    def __init__(self, record):
+        self.ts = record['ts']
+        self.history = record['history']
 
+def export_batched_realisations(realisations: list[ons.Simulation], metadata, output_path):
+    with open(output_path, 'wb') as fp:
+        pickle.dump({
+            'parameters': metadata['parameters'],
+            'seeds': metadata['seeds'],
+            'records': [{'ts': x.ts, 'history': x.history} for x in realisations]
+        }, fp)
 
+def import_batched_realisations(input_file):
+    """Map the dictionary elements back to namespace-like objects"""
+    with open(input_file, 'rb') as fp:
+        results = pickle.load(fp)
+    
+    return {
+        'parameters': results['parameters'],
+        'seeds': results['seeds'],
+        'records': [SimulationResult(record) for record in results['records']]
+    }
 
 if __name__ == "__main__":
     main("./concordant_networks/temponet_14_365.lgl", "./conc_tempo_14_in", "./concordant_networks/size_14.csv")
