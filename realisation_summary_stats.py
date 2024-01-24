@@ -13,7 +13,7 @@ def hitting_time(realisation, sizes, threshold=0.7):
         hitting_time: the first time at which the threshold is exceeded
     """
 
-    proportion_infected = realisation.history / sizes.reshape((-1, 1))
+    proportion_infected = realisation.history / np.reshape(sizes, (-1, 1))
     max_indices = np.argmax(proportion_infected > threshold, axis=1)
     return [(realisation.ts[maxi] if proportion_infected[i,maxi] > threshold else None) 
             for i,maxi in enumerate(max_indices) ]
