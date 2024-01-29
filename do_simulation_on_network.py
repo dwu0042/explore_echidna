@@ -93,7 +93,7 @@ def run_batched_snapshot_simulations(snapshot_file, size_file=None, graph_file=N
     assert not (size_file is None and graph_file is None), "Need to provide either the hospital size file, or a temporal graph file."
     sizes = find_sizes(size_file, graph_file)
 
-    return [run_snapshot_sim(sizes, snapshot_file, parameters, *seed_options) for _ in range(n_runs)]
+    return [run_snapshot_sim(sizes, snapshots, parameters, *seed_options) for _ in range(n_runs)]
 
 class SimulationResult():
     def __init__(self, record):
