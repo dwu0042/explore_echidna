@@ -32,7 +32,7 @@ def inbound_snapshot(graph: ig.Graph, time, aggmode='sum'):
     
     return snapshot_from_locations_and_edges(time, included_locations, included_edges, aggmode)
 
-def bothbound_snapshot(graph: ig.Graph, time, aggmode='sum'):
+def bothbound_snapshot(graph: ig.Graph, time, aggmode='detailed'):
     included_vertices = graph.vs.select(time_eq=time)
     included_locations = sorted(set(included_vertices['loc']))   # sorted returns list
     # loc_lookup = {loc: i for i,loc in enumerate(included_locations)}
@@ -50,21 +50,35 @@ def snapshot_from_locations_and_edges(time, included_locations, included_edges, 
 
     return snapshot
 
-def aggregate_edges(included_edges, time=None, method='sum'):
+def aggregate_edges(included_edges, time, method='sum'):
 
     if len(included_edges) < 1:
         warnings.warn(f"No valid edges at time {time}.")
-        edge_df = []
+        edge_info = []
     else:
-        edge_df = pl.from_dicts([
-            {'source': e.source_vertex['loc'], 'target': e.target_vertex['loc'], 'weight': e['weight']}
+        edge_info = pl.from_dicts([
+            {
+                'source': e.source_vertex['loc'], 
+                'target': e.target_vertex['loc'], 
+                'weight': e['weight'],
+                'diff_time': e.source_vertex['time'] != e.target_vertex['time'],
+                'source_now': e.source_vertex['time'] == time,
+                'target_now': e.target_vertex['time'] == time,
+            }
             for e in included_edges
         ]).group_by('source', 'target')
 
         if method == 'sum':
-            edge_df = edge_df.sum().to_dicts()
+            edge_df = edge_info.sum().to_dicts()
         elif method == 'invsum':
-            edge_df = edge_df.agg(pl.col('weight').pow(-1).sum().pow(-1)).to_dicts()
+            edge_df = edge_info.agg(pl.col('weight').pow(-1).sum().pow(-1)).to_dicts()
+        elif method == 'detailed':
+            # assume only with both-type projection
+            edge_df = edge_info.agg(
+                pl.col('weight').filter(pl.col('diff_time').not_()).sum().alias('weight'),
+                pl.col('weight').filter(pl.col('diff_time') & pl.col('source_now')).sum().alias('departures'),
+                pl.col('weight').filter(pl.col('diff_time') & pl.col('target_now')).sum().alias('arrivals'),
+            ).to_dicts()
         else:
             raise NotImplemented(f"Unknown aggregation method for edge weights: {method}")
 
