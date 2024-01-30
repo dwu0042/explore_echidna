@@ -3,7 +3,7 @@
 import graph_importer as gim
 import examine_transfers_for_sizes as esz
 import on_network_simulation as ons
-
+import igraph as ig
 import multiprocessing
 import pickle
 
@@ -70,16 +70,6 @@ def do_snapshot_sim(snapshot_file, size_file=None, graph_file=None, parameters=(
     snapshot_sim = run_snapshot_sim(sizes, snapshots, parameters)
     return snapshot_sim
 
-
-def main(graph_file, snapshot_file, size_file=None, parameters=(0.2, 1./365, 1./28)):
-    
-    temporal_sim = do_temporal_sim(graph_file, size_file, parameters)
-    
-    # snapshot_sim = do_snapshot_sim(snapshot_file, size_file, graph_file, parameters)
-
-    # return temporal_sim, snapshot_sim
-    return temporal_sim
-
 def run_batched_temporal_simulations(graph_file, size_file=None, parameters=(0.2, 1./365, 1./28), seed_options=(3, 5), n_runs=10):
 
     graph = gim.make_graph(graph_file)
@@ -94,6 +84,35 @@ def run_batched_snapshot_simulations(snapshot_file, size_file=None, graph_file=N
     sizes = find_sizes(size_file, graph_file)
 
     return [run_snapshot_sim(sizes, snapshots, parameters, *seed_options) for _ in range(n_runs)]
+
+def run_static_sim(graph, sizes, parameters, n_seed_events, n_seeds_per_event):
+    ordering = {hospital: i for i, (hospital, size) in enumerate(sorted(sizes.items()))}
+    ordered_sizes = [size for hospital,size in sorted(sizes.items())]
+
+
+    transition_matrix = ons.transition_matrix_from_graph(
+        graph,
+        ordering=ordering,
+        scaling_per_node=ordered_sizes,
+        global_scaling=(10*365),
+        ordering_key='name',
+        adjacency_attribute='weight',
+        matrix_size=len(ordering)
+    )
+
+    sim = ons.Simulation(ordered_sizes, transition_matrix, parameters=parameters, dt=1)
+    sim.seed(n_seed_events, n_seeds_per_event)
+    sim.simulate(5 * 365)
+    return sim
+
+def run_static_simulations(static_graph_file, size_file=None, graph_file=None, parameters=(0.2, 1./28), seed_options=(3, 5), n_runs=10):
+
+    G = ig.Graph.Read_GraphML(static_graph_file)
+    assert not (size_file is None and graph_file is None), "Need to provide either the hospital size file, or a temporal graph file."
+    sizes = find_sizes(size_file, graph_file)
+
+    return [run_static_sim(G, sizes, parameters, *seed_options) for _ in range(n_runs)]
+
 
 class SimulationResult():
     def __init__(self, record):
@@ -118,6 +137,15 @@ def import_batched_realisations(input_file):
         'seeds': results['seeds'],
         'records': [SimulationResult(record) for record in results['records']]
     }
+
+def main(graph_file, snapshot_file, size_file=None, parameters=(0.2, 1./365, 1./28)):
+    
+    temporal_sim = do_temporal_sim(graph_file, size_file, parameters)
+    
+    # snapshot_sim = do_snapshot_sim(snapshot_file, size_file, graph_file, parameters)
+
+    # return temporal_sim, snapshot_sim
+    return temporal_sim
 
 if __name__ == "__main__":
     main("./concordant_networks/temponet_14_365.lgl", "./conc_tempo_14_in", "./concordant_networks/size_14.csv")
