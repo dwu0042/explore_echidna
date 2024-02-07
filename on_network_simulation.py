@@ -319,6 +319,62 @@ class SnapshotNetworkSimulation(Simulation):
                 snapshots[name] = ig.Graph.Read_GraphML(graph_file)
         return snapshots
 
+class SnapshotNoveauSimulation(Simulation):
+    
+    _adjacency_key = {
+        'direct': 'weight',
+        'out': 'departures',
+        'in': 'arrivals',
+    }
+
+    def __init__(self, hospital_size_mapping, snapshots, parameters, dt=1.0):
+        self.hospital_ordering = self.order_hospital_size_mapping(hospital_size_mapping)
+        self.hospital_lookup = {v: k for k,v in self.hospital_ordering.items()}
+        self.hospital_sizes = [hospital_size_mapping[i] for i in self.hospital_lookup.values()]
+        self.snapshot_times = sorted(snapshots.keys())
+        self.snapshot_durations = np.diff(self.snapshot_times)
+        self.direct_transition_matrices = [
+            self.make_transition_matrix_from_graph(snapshots[snapkey], duration) 
+            for snapkey, duration in zip(self.snapshot_times, self.snapshot_durations)
+        ]
+        super().__init__(self.hospital_sizes, self.transition_matrices[0], parameters, dt=dt)
+        self.current_index = 0
+
+    @staticmethod
+    def order_hospital_size_mapping(hospital_size_mapping):
+        return {int(k):i for i,k in enumerate(sorted(hospital_size_mapping.keys()))}
+
+    def step(self):
+        step_res = super().step()
+        if self.ts[-1] >= self.snapshot_times[self.current_index + 1]:
+            # swap in new transition matrix
+            self.current_index += 1
+            self.PP = self.transition_matrices[self.current_index]
+        return step_res
+
+    def make_transition_matrix_from_graph(self, graph: ig.Graph, duration: float, adj_key: str='weight'):
+
+        return transition_matrix_from_graph(
+            graph=graph,
+            ordering=self.hospital_ordering,
+            scaling_per_node=self.hospital_sizes,
+            global_scaling=duration,
+            ordering_key='name',
+            adjacency_attribute=adj_key,
+            matrix_size=max(self.hospital_ordering.values()) + 1
+        )
+
+    @staticmethod
+    def load_snapshots(rootpath):
+        snapshots = dict()
+        for graph in glob.glob(f"{rootpath}/*.graphml"):
+            # safe for windows?
+            name = int(pathlib.Path(graph).stem)
+            with open(graph, 'r') as graph_file:
+                snapshots[name] = ig.Graph.Read_GraphML(graph_file)
+        return snapshots
+
+
 
 def transition_matrix_from_graph(graph: ig.Graph, ordering: Mapping=None, scaling_per_node: Iterable=None, global_scaling: float=1, ordering_key: Hashable=None, adjacency_attribute: Hashable=None, matrix_size: int=None):
     """Given a Graph, generates the associated transition matrix
