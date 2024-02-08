@@ -333,24 +333,63 @@ class SnapshotNoveauSimulation(Simulation):
         self.hospital_sizes = [hospital_size_mapping[i] for i in self.hospital_lookup.values()]
         self.snapshot_times = sorted(snapshots.keys())
         self.snapshot_durations = np.diff(self.snapshot_times)
-        self.direct_transition_matrices = [
-            self.make_transition_matrix_from_graph(snapshots[snapkey], duration) 
-            for snapkey, duration in zip(self.snapshot_times, self.snapshot_durations)
+        self.transition_matrices = { adjtype:
+            [self.make_transition_matrix_from_graph(snapshots[snapkey], duration, adj_key=self._adjacency_key[adjtype])
+             for snapkey, duration in zip(self.snapshot_times, self.snapshot_durations)]
+            for adjtype in ('direct', 'out', 'in')
+        }
+        # adjust weighting on the 'in' transition matrix
+        self.transition_matrices['in'] = [
+            Min / Mout for Min, Mout in zip(self.transition_matrices['in'], self.transition_matrices['out'])
         ]
-        super().__init__(self.hospital_sizes, self.transition_matrices[0], parameters, dt=dt)
+        super().__init__(self.hospital_sizes, self.transition_matrices['direct'][0], parameters, dt=dt)
         self.current_index = 0
+        self.shadow_state = np.zeros_like(self.state)
 
     @staticmethod
     def order_hospital_size_mapping(hospital_size_mapping):
         return {int(k):i for i,k in enumerate(sorted(hospital_size_mapping.keys()))}
 
     def step(self):
-        step_res = super().step()
+        beta, gamma, *_ = self.parameters
+        # S = self.state[::2,:]
+        # I = self.state[1::2,:]
+        I = self.state
+        X = self.shadow_state
+
+        # we note we get _rates_
+        # I will model as Poisson, w/ fixed rates wrt the start of the step
+        n_inf = self.rng.poisson(beta * (self.N - I) * I / self.N * self.dt)
+        n_rec = self.rng.poisson(gamma * I * self.dt)
+        # here we take the transition matrix and need to ensure that poisson() gets +ve rates
+        # in theory, the transition matrix should be all +ve; the computational tradeoff is minimal
+        mov_I = self.PP * I
+        M_mov_I = self.rng.poisson(np.abs(mov_I) * self.dt) * np.sign(mov_I)
+        # A_ij is from i to j; col sum gives incoming, row sum gives outgoing
+        n_mov_I = (M_mov_I.sum(axis=0) - M_mov_I.sum(axis=1)).reshape(I.shape)
+        # clipping values at zero to prevent pathological behaviour
+        # this might leak ppl out of/into the system if we are not careful, but it'll be quite small
+        I_new = np.clip(I + n_inf - n_rec + n_mov_I, 0, self.N)
+
+        # do movements for indirect transfers
+        # outwards (to shadow state/future)
+        indirect_out = self.transition_matrices['out'][self.current_index] * I
+        mov_out = self.rng.poisson(indirect_out * self.dt)
+        n_mov_out = mov_out.sum(axis=0).reshape(X.shape)
+        
+        indirect_in = self.transition_matrices['in'][self.current_index] * X
+        mov_in = self.rng.poisson(indirect_in * self.dt)
+        n_mov_in = mov_in.sum(axis=0).reshape(X.shape)
+
+        self.shadow_state = X + n_mov_out - n_mov_in
+
         if self.ts[-1] >= self.snapshot_times[self.current_index + 1]:
             # swap in new transition matrix
             self.current_index += 1
-            self.PP = self.transition_matrices[self.current_index]
-        return step_res
+            self.PP = self.transition_matrices['direct'][self.current_index]
+
+        return I_new
+
 
     def make_transition_matrix_from_graph(self, graph: ig.Graph, duration: float, adj_key: str='weight'):
 
