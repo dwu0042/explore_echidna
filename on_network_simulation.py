@@ -309,16 +309,6 @@ class SnapshotNetworkSimulation(Simulation):
             matrix_size=max(self.hospital_ordering.values()) + 1
         )
 
-    @staticmethod
-    def load_snapshots(rootpath):
-        snapshots = dict()
-        for graph in glob.glob(f"{rootpath}/*.graphml"):
-            # safe for windows?
-            name = int(pathlib.Path(graph).stem)
-            with open(graph, 'r') as graph_file:
-                snapshots[name] = ig.Graph.Read_GraphML(graph_file)
-        return snapshots
-
 class SnapshotNoveauSimulation(Simulation):
     
     _adjacency_key = {
@@ -413,6 +403,15 @@ class SnapshotNoveauSimulation(Simulation):
                 snapshots[name] = ig.Graph.Read_GraphML(graph_file)
         return snapshots
 
+
+def load_snapshots(rootpath):
+    snapshots = dict()
+    for graph in glob.glob(f"{rootpath}/*.graphml"):
+        # safe for windows?
+        name = int(pathlib.Path(graph).stem)
+        with open(graph, 'r') as graph_file:
+            snapshots[name] = ig.Graph.Read_GraphML(graph_file)
+    return snapshots
 
 
 def transition_matrix_from_graph(graph: ig.Graph, ordering: Mapping=None, scaling_per_node: Iterable=None, global_scaling: float=1, ordering_key: Hashable=None, adjacency_attribute: Hashable=None, matrix_size: int=None):
