@@ -117,9 +117,7 @@ def metric_over_snapshots(snapshots: dict[int, ig.Graph], metric: str):
 
     return pl.from_dicts(dataset)
 
-def snapshot_metric_ranks(snapshots: dict[int, ig.Graph], metric: str, ordered=True, descending=True, fill=False, return_filled=False):
-    
-    metric_df = metric_over_snapshots(snapshots, metric)
+def rank_metrics(metric_df: pl.DataFrame, ordered=True, descending=True, fill=False):
 
     dfx = (metric_df
            .transpose()
@@ -145,17 +143,46 @@ def snapshot_metric_ranks(snapshots: dict[int, ig.Graph], metric: str, ordered=T
 
     return dfx
 
-def ranking_plot(snapshots: dict[int, ig.Graph], metric: str, ordered=True, descending=True, fill=False, ax=None, cmap='magma'):
+def snapshot_metric_ranks(snapshots: dict[int, ig.Graph], metric: str, ordered=True, descending=True, fill=False):
+    
+    metric_df = metric_over_snapshots(snapshots, metric)
 
-    metric_ranks = snapshot_metric_ranks(snapshots, metric, ordered, descending, fill)
+    return rank_metrics(metric_df, ordered=True, descending=True, fill=fill)
+
+def plot_rankings(metric_ranks, ax=None, cmap='magma_r', fillcolor=None, cbar=True, labels=True):
     metric_arr = metric_ranks.drop('loc').to_numpy()
     if ax is None:
         fig = plt.figure()
         ax = fig.add_subplot()
-    image = ax.imshow(metric_arr, cmap=cmap)
-    ax.set_xlabel('Time')
-    ax.set_ylabel('Campus')
-    ax.get_figure().colorbar(image, label='Ranking')
+    image = ax.imshow(metric_arr, cmap=cmap, interpolation='nearest')
+    if labels:
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Campus')
+    if fillcolor is not None:
+        ax.set_facecolor(fillcolor)
+    if cbar:
+        cb = ax.get_figure().colorbar(image, label='Ranking')
+        cb.ax.invert_yaxis()
+    return ax
+
+
+def ranking_plot(snapshots: dict[int, ig.Graph], metric: str, ordered=True, descending=True, fill=False, ax=None, cmap='magma_r', fillcolor=None, cbar=True, labels=True):
+
+    metric_ranks = snapshot_metric_ranks(snapshots, metric, ordered=ordered, descending=descending, fill=fill)
+    plot_rankings(metric_ranks, ax=ax, cmap=cmap, fillcolor=fillcolor, cbar=cbar, labels=labels)
+
+def multiranking_plot(snapshots, metrics, shape=(2, 2), timeunit='fortnights', **kwargs):
+    fig, azs = plt.subplots(*shape)
+    axs = azs.flatten()
+
+    for metric, ax in zip(metrics, axs):
+        ranking_plot(snapshots, metric, ax=ax, cbar=False, labels=False, **kwargs)
+        ax.set_title(metric.title())
+
+    fig.supxlabel(f'Time [{timeunit}]')
+    fig.supylabel('Campus')
+    cb = fig.colorbar(ax.get_images()[0], ax=azs, label='Ranking')
+    cb.ax.invert_yaxis()
 
 if __name__ == "__main__":
 
@@ -168,6 +195,7 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--snapshot_type", dest="snaptype", choices=_snapshot_mode.keys(), default='out')
     parser.add_argument("-a", "--aggregation", dest='aggmode', default='sum')
     parser.add_argument("-m", "--metric", dest="metric", choices=_metric_dict.keys(), default="harmonic")
+    parser.add_argument('-x', "--fillcolor", dest='fillcolor', default=None)
     parser.add_argument('--fill', action='store_true')
     parser.add_argument('-g', '--graphs', action="store_true")
 
@@ -194,7 +222,7 @@ if __name__ == "__main__":
         else:
             input_path = args.input_path
         snapshots = read_snapshots(input_path)
-        ranking_plot(snapshots, metric=args.metric, fill=args.fill)
+        ranking_plot(snapshots, metric=args.metric, fill=args.fill, fillcolor=args.fillcolor)
         if args.output is None:
             output_path = f"{args.input_path}/ranking_{args.metric}.png"
         else:

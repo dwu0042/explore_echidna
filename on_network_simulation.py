@@ -12,7 +12,7 @@ from typing import Mapping, Iterable, Hashable
 _EPS = 1e-14
 
 class Simulation():
-    def __init__(self, hospital_sizes, transition_matrix, parameters, dt=1.0, remove_diagonal=True):
+    def __init__(self, hospital_sizes, transition_matrix, prob_final, parameters, dt=1.0, remove_diagonal=True, make_removal=True):
         """Initialises a stochastic simulation of an SIS metapopulation model
         Assumes that the number of individuals in each metapopulation patch (hospital) is constant and known
         Implements mass-action infection, exponential recovery and movement according to a transition matrix.
@@ -27,6 +27,8 @@ class Simulation():
         self.N = np.array(hospital_sizes).reshape((-1, 1))
         if remove_diagonal: transition_matrix -= np.diag(np.diag(transition_matrix))
         self.PP = transition_matrix
+        if make_removal:
+            self.removal = self.PP.sum(axis=1).reshape((-1, 1)) / (1-prob_final.reshape((-1, 1))) * prob_final.reshape((-1, 1))
         self.parameters = parameters
         self.dt = dt
         self._history = [self.state]
@@ -69,7 +71,7 @@ class Simulation():
         # we note we get _rates_
         # I will model as Poisson, w/ fixed rates wrt the start of the step
         n_inf = self.rng.poisson(beta * (self.N - I) * I / self.N * self.dt)
-        n_rec = self.rng.poisson(gamma * I * self.dt)
+        n_rec = self.rng.poisson(self.removal * I * self.dt)
         # here we take the transition matrix and need to ensure that poisson() gets +ve rates
         # in theory, the transition matrix should be all +ve; the computational tradeoff is minimal
         mov_I = self.PP * I
@@ -108,14 +110,16 @@ class TemporalNetworkSimulation(Simulation):
      Has a convenience method to map a temporal network loaded in with loc and time attrs on nodes to a transition matrix (snapshot representation)
      Performs stepping for the temporal network assuming that dynamics clump at the start of the snapshot time, allows for edges that move both loc and time
      """
-    def __init__(self, hospital_size_mapping, network, parameters, dt=1.0):
+    def __init__(self, hospital_size_mapping, network, prob_final_stay, parameters, dt=1.0):
         # step size is determined by the temporal network
         transition_matrix, net_dt, dimensions = self.map_network_to_transition_matrix(hospital_size_mapping, network)
         self.DIMENSIONS = dimensions
         self.DT = net_dt
+        self.prob_final_stay = np.array([prob_final_stay[hosp] for hosp,_ in sorted(hospital_size_mapping.items())]).reshape((-1, 1))
         hospital_sizes = np.asanyarray([v for _,v in sorted(hospital_size_mapping.items())])
-        super().__init__(hospital_sizes, transition_matrix, parameters, dt=dt, remove_diagonal=False)
+        super().__init__(hospital_sizes, transition_matrix, self.prob_final_stay, parameters, dt=dt, remove_diagonal=False, make_removal=False)
         self.time_travellers = np.zeros((self.DIMENSIONS['NLOC'], self.DIMENSIONS['NT']))
+        self.removal_rate = self.compute_removal_rates()
 
     @staticmethod
     def map_network_to_transition_matrix(hospital_size_mapping: dict[int, int], network: ig.Graph):
@@ -150,6 +154,17 @@ class TemporalNetworkSimulation(Simulation):
 
         return transition_matrix.tocsr(), DT, {'NLOC': NLOC, 'NT': NT}
     
+    def compute_removal_rates(self):
+
+        NLOC = self.DIMENSIONS['NLOC']
+        NT = self.DIMENSIONS['NT']
+        movements_out = self.PP.sum(axis=1).reshape((NT, NLOC)).T
+        p = self.prob_final_stay.reshape((-1, 1))
+        f = p/(1-p)
+        gamma = f*movements_out
+        return gamma
+
+
     def step(self):
         """
         sketch of step for temporal
@@ -224,7 +239,7 @@ class TemporalNetworkSimulation(Simulation):
         # substep 3: perform intra-timestep operations (movements/infection)
         I = new_state
         n_inf = self.rng.poisson(beta * (N-I) * I / N * self.dt)
-        n_rec = self.rng.poisson((gamma + eta) * I * self.dt) # TODO: if eta is hospital based
+        n_rec = self.rng.poisson(self.removal_rate[:,tidx:tidx+1] * I * self.dt) # TODO: if eta is hospital based
         mov_I = (self.PP[XTHIS:XNEXT, XTHIS:XNEXT] * I).todense()
         M_mov_I = self.rng.poisson(np.abs(mov_I) * self.dt) * np.sign(mov_I)
         n_mov_I = (M_mov_I.sum(axis=0) - M_mov_I.sum(axis=1)).reshape(I.shape)
@@ -272,17 +287,18 @@ class SnapshotNetworkSimulation(Simulation):
     """Extends Simulation in order to allow for swapping out of the transition matrix (PP)
     """
 
-    def __init__(self, hospital_size_mapping, snapshots, parameters, dt=1.0):
+    def __init__(self, hospital_size_mapping, snapshots, prob_final, parameters, dt=1.0):
         self.hospital_ordering = self.order_hospital_size_mapping(hospital_size_mapping)
         self.hospital_lookup = {v: k for k,v in self.hospital_ordering.items()}
         self.hospital_sizes = [hospital_size_mapping[i] for i in self.hospital_lookup.values()]
         self.snapshot_times = sorted(snapshots.keys())
         self.snapshot_durations = np.diff(self.snapshot_times)
+        self.prob_final_arr = np.array([prob_final[hosp] for hosp,_ in sorted(hospital_size_mapping.items())]).reshape((-1, 1))
         self.transition_matrices = [
             self.make_transition_matrix_from_graph(snapshots[snapkey], duration) 
             for snapkey, duration in zip(self.snapshot_times, self.snapshot_durations)
         ]
-        super().__init__(self.hospital_sizes, self.transition_matrices[0], parameters, dt=dt)
+        super().__init__(self.hospital_sizes, self.transition_matrices[0], self.prob_final_arr, parameters, dt=dt)
         self.current_index = 0
 
     @staticmethod
@@ -295,6 +311,7 @@ class SnapshotNetworkSimulation(Simulation):
             # swap in new transition matrix
             self.current_index += 1
             self.PP = self.transition_matrices[self.current_index]
+            self.removal = self.PP.sum(axis=1).reshape((-1, 1)) / (1-self.prob_final_arr) * self.prob_final_arr
         return step_res
 
     def make_transition_matrix_from_graph(self, graph: ig.Graph, duration: float):
@@ -317,66 +334,98 @@ class SnapshotNoveauSimulation(Simulation):
         'in': 'arrivals',
     }
 
-    def __init__(self, hospital_size_mapping, snapshots, parameters, dt=1.0):
+    @staticmethod
+    def power_kernel(steps, power=-0.6, trunc=26):
+        t = np.arange(np.clip(steps, 1, trunc), 0, -1)
+        s = t ** power
+        c = 1/np.sum(s)
+        return c*s
+
+    def __init__(self, hospital_size_mapping, snapshots, prob_final, parameters, dt=1.0, trunc=26):
         self.hospital_ordering = self.order_hospital_size_mapping(hospital_size_mapping)
-        self.hospital_lookup = {v: k for k,v in self.hospital_ordering.items()}
-        self.hospital_sizes = [hospital_size_mapping[i] for i in self.hospital_lookup.values()]
+        self.NHOSP = len(self.hospital_ordering)
+        self.hospital_lookup = [hospital for hospital in self.hospital_ordering.keys()]
+        self.hospital_sizes = [hospital_size_mapping[hosp] for hosp in self.hospital_lookup]
         self.snapshot_times = sorted(snapshots.keys())
         self.snapshot_durations = np.diff(self.snapshot_times)
-        self.transition_matrices = { adjtype:
+        self.raw_transition_matrices = { adjtype:
             [self.make_transition_matrix_from_graph(snapshots[snapkey], duration, adj_key=self._adjacency_key[adjtype])
              for snapkey, duration in zip(self.snapshot_times, self.snapshot_durations)]
             for adjtype in ('direct', 'out', 'in')
         }
-        # adjust weighting on the 'in' transition matrix
-        self.transition_matrices['in'] = [
-            Min / Mout for Min, Mout in zip(self.transition_matrices['in'], self.transition_matrices['out'])
-        ]
-        super().__init__(self.hospital_sizes, self.transition_matrices['direct'][0], parameters, dt=dt)
+        self.prob_final = np.array([prob_final[hosp] for hosp in self.hospital_lookup]).reshape((-1, 1))
+        self.transition_matrices = dict()
+        # adjust weighting on the 'direct', 'out', 'in' transition matrices to reflect correct prob tree
+        self.transform_out_transition_matrix()
+        self.transform_in_transition_matrix(trunc=trunc)
+
+        super().__init__(self.hospital_sizes, None, None, parameters, dt=dt, remove_diagonal=False, make_removal=False)
         self.current_index = 0
-        self.shadow_state = np.zeros_like(self.state)
+        self.shadow_state = np.zeros((self.NHOSP, self.NHOSP))
+
+    def transform_out_transition_matrix(self):
+        self.transition_matrices['out'] = []
+        self.leave_rate = []
+        for D, U in zip(self.raw_transition_matrices['direct'], self.raw_transition_matrices['out']):
+            Sig = (D+U).sum(axis=1).reshape((-1, 1))
+            self.leave_rate.append(Sig / (1-self.prob_final).reshape((-1, 1)))
+            Dp = D / Sig
+            Up = U / Sig
+            self.transition_matrices['out'].append(np.hstack([np.nan_to_num(Dp), np.nan_to_num(Up)]))
+
+    def transform_in_transition_matrix(self, trunc=26):
+        self.transition_matrices['in'] = []
+        for i, E in enumerate(self.raw_transition_matrices['in']):
+            if i == 0:
+                # special case at t=0
+                self.transition_matrices['in'].append(E) # should be all zeros
+                continue
+            powker = self.power_kernel(i)
+            i_start = np.clip(i - trunc, 0, i)
+            U_out = np.sum(self.raw_transition_matrices['out'][i_start:i] * powker[:,np.newaxis, np.newaxis], axis=0)
+            E_idx = np.where(E)
+            E_transformed = np.zeros_like(E)
+            E_transformed[E_idx] = E[E_idx] / U_out[E_idx]
+            self.transition_matrices['in'].append(E_transformed)
+
+    def reset(self):
+        super().reset()
+        self.shadow_state = np.zeros((self.NHOSP, self.NHOSP))
+        self.current_index = 0
 
     @staticmethod
     def order_hospital_size_mapping(hospital_size_mapping):
         return {int(k):i for i,k in enumerate(sorted(hospital_size_mapping.keys()))}
 
     def step(self):
-        beta, gamma, *_ = self.parameters
-        # S = self.state[::2,:]
-        # I = self.state[1::2,:]
+        beta, *_ = self.parameters
+
         I = self.state
         X = self.shadow_state
 
         # we note we get _rates_
         # I will model as Poisson, w/ fixed rates wrt the start of the step
         n_inf = self.rng.poisson(beta * (self.N - I) * I / self.N * self.dt)
-        n_rec = self.rng.poisson(gamma * I * self.dt)
-        # here we take the transition matrix and need to ensure that poisson() gets +ve rates
-        # in theory, the transition matrix should be all +ve; the computational tradeoff is minimal
-        mov_I = self.PP * I
-        M_mov_I = self.rng.poisson(np.abs(mov_I) * self.dt) * np.sign(mov_I)
-        # A_ij is from i to j; col sum gives incoming, row sum gives outgoing
-        n_mov_I = (M_mov_I.sum(axis=0) - M_mov_I.sum(axis=1)).reshape(I.shape)
-        # clipping values at zero to prevent pathological behaviour
-        # this might leak ppl out of/into the system if we are not careful, but it'll be quite small
-        I_new = np.clip(I + n_inf - n_rec + n_mov_I, 0, self.N)
+        n_out = np.clip(self.rng.poisson(self.leave_rate[self.current_index] * I * self.dt), 0, I).astype('int64')
 
-        # do movements for indirect transfers
-        # outwards (to shadow state/future)
-        indirect_out = self.transition_matrices['out'][self.current_index] * I
-        mov_out = self.rng.poisson(indirect_out * self.dt)
-        n_mov_out = mov_out.sum(axis=0).reshape(X.shape)
-        
-        indirect_in = self.transition_matrices['in'][self.current_index] * X
-        mov_in = self.rng.poisson(indirect_in * self.dt)
-        n_mov_in = mov_in.sum(axis=0).reshape(X.shape)
+        n_abandon = self.rng.binomial(n_out, self.prob_final)
+        n_remain = n_out - n_abandon
 
-        self.shadow_state = X + n_mov_out - n_mov_in
+        move_to = self.rng.multinomial(n_remain.flatten(), self.transition_matrices['out'][self.current_index])
+        direct_move_to = move_to[:, :self.NHOSP].sum(axis=0).reshape(I.shape)
+        indirect_move_to = move_to[:, self.NHOSP:].reshape(X.shape)
+
+        indirect_return_rate = self.transition_matrices['in'][self.current_index] * X
+        indirect_returns_raw = self.rng.poisson(indirect_return_rate * self.dt)
+        indirect_returns_wide = np.clip(indirect_returns_raw.reshape(X.shape), 0, X)
+        indirect_returns = indirect_returns_raw.sum(axis=1).reshape(I.shape)
+
+        I_new = np.clip(I + n_inf - n_out + direct_move_to + indirect_returns, 0, self.N)
+        self.shadow_state = X + indirect_move_to - indirect_returns_wide
 
         if self.ts[-1] >= self.snapshot_times[self.current_index + 1]:
             # swap in new transition matrix
             self.current_index += 1
-            self.PP = self.transition_matrices['direct'][self.current_index]
 
         return I_new
 
@@ -441,6 +490,24 @@ def transition_matrix_from_graph(graph: ig.Graph, ordering: Mapping=None, scalin
     transition_matrix = ordered_adj / np.reshape(scaling_per_node, ((-1, 1))) / global_scaling
     return transition_matrix
 
+def sample_poisson_on_sparse(sparse_rates, rng=None):
+    """We want to sample poisson-distributed values, with mean values given by the values of a sparse array"""
+    if rng is None:
+        rng = np.random.default_rng()
+    # convert to COO format
+    sparse_rates = sparse_rates.tocoo()
+    # pull sample based on the saprse amtrix non-zero values
+    sample = rng.poisson(sparse_rates.data)
+    # generate a new sparse matrix based on the sampled values
+    sample_sparse = sparse.coo_array((sample, (sparse_rates.row, sparse_rates.col)), shape=sparse_rates.shape, dtype=sparse_rates.dtype)
+
+    return sample_sparse
+
+
+
+#############################################################################################################
+
+
 def stoch_sim_test():
     sim = Simulation(
             [100, 300, 200], 
@@ -481,19 +548,16 @@ def main():
 
 
 
-def sample_poisson_on_sparse(sparse_rates, rng=None):
-    """We want to sample poisson-distributed values, with mean values given by the values of a sparse array"""
-    if rng is None:
-        rng = np.random.default_rng()
-    # convert to COO format
-    sparse_rates = sparse_rates.tocoo()
-    # pull sample based on the saprse amtrix non-zero values
-    sample = rng.poisson(sparse_rates.data)
-    # generate a new sparse matrix based on the sampled values
-    sample_sparse = sparse.coo_array((sample, (sparse_rates.row, sparse_rates.col)), shape=sparse_rates.shape, dtype=sparse_rates.dtype)
-
-    return sample_sparse
-
 
 if __name__ == "__main__":
-    main()
+    import polars as pl
+    import examine_transfers_for_sizes as esz
+    snaps = load_snapshots("conc_tempo_14_detailed")
+    sizes = esz.quick_read("concordant_networks/size_14.csv")
+    pfind = pl.read_csv("probability_of_final_stay_by_shuffled_campus.csv")
+    pfind = {h:p for h,p in zip(*(pfind.select(x).to_series().to_list() for x in ('loc', 'final_stay')))}
+    parameters = (0.2,)
+
+    sim = SnapshotNoveauSimulation(sizes, snaps, pfind, parameters)
+    sim.seed(3, 5)
+

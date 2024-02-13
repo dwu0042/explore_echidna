@@ -238,7 +238,7 @@ def sankey_diagram(
     print("figure constructed")
 
     if save_to is not None:
-        fig.savefig(save_to)
+        fig.savefig(save_to, dpi=360)
     else:
         return fig, ax
 
@@ -394,5 +394,5 @@ def main():
     parser.add_argument()
 
 if __name__ == "__main__":
-    dfx = pl.read_csv("flow_reweighted_14/cluster_by_name.csv")
-    sankey_diagram(dfx, save_to="flow_reweighted_14/alluvial_diagram_clusters_14.pdf")
+    dfx = pl.read_csv("flow_reweighted_both_14_365/cluster_by_name.csv")
+    sankey_diagram(dfx, save_to="flow_reweighted_both_14_365/alluvial_diagram_clusters_14.png")
