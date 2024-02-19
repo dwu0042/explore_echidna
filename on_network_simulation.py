@@ -362,6 +362,7 @@ class SnapshotNoveauSimulation(Simulation):
         super().__init__(self.hospital_sizes, None, None, parameters, dt=dt, remove_diagonal=False, make_removal=False)
         self.current_index = 0
         self.shadow_state = np.zeros((self.NHOSP, self.NHOSP))
+        self.transient_shadow = np.zeros_like(self.shadow_state)
 
     def transform_out_transition_matrix(self):
         self.transition_matrices['out'] = []
@@ -391,6 +392,7 @@ class SnapshotNoveauSimulation(Simulation):
     def reset(self):
         super().reset()
         self.shadow_state = np.zeros((self.NHOSP, self.NHOSP))
+        self.transient_shadow = np.zeros_like(self.shadow_state)
         self.current_index = 0
 
     @staticmethod
@@ -402,6 +404,9 @@ class SnapshotNoveauSimulation(Simulation):
 
         I = self.state
         X = self.shadow_state
+        Z = self.transient_shadow
+        NARROW = I.shape
+        WIDE = X.shape
 
         # we note we get _rates_
         # I will model as Poisson, w/ fixed rates wrt the start of the step
@@ -412,20 +417,23 @@ class SnapshotNoveauSimulation(Simulation):
         n_remain = n_out - n_abandon
 
         move_to = self.rng.multinomial(n_remain.flatten(), self.transition_matrices['out'][self.current_index])
-        direct_move_to = move_to[:, :self.NHOSP].sum(axis=0).reshape(I.shape)
-        indirect_move_to = move_to[:, self.NHOSP:].reshape(X.shape)
+        direct_move_to = move_to[:, :self.NHOSP].sum(axis=0).reshape(NARROW)
+        indirect_move_to = move_to[:, self.NHOSP:].reshape(WIDE)
 
         indirect_return_rate = self.transition_matrices['in'][self.current_index] * X
         indirect_returns_raw = self.rng.poisson(indirect_return_rate * self.dt)
-        indirect_returns_wide = np.clip(indirect_returns_raw.reshape(X.shape), 0, X)
-        indirect_returns = indirect_returns_raw.sum(axis=1).reshape(I.shape)
+        indirect_returns_wide = np.clip(indirect_returns_raw.reshape(WIDE), 0, X)
+        indirect_returns = indirect_returns_raw.sum(axis=1).reshape(NARROW)
 
         I_new = np.clip(I + n_inf - n_out + direct_move_to + indirect_returns, 0, self.N)
-        self.shadow_state = X + indirect_move_to - indirect_returns_wide
+        self.shadow_state = X - indirect_returns_wide
+        self.transient_shadow = Z + indirect_move_to
 
         if self.ts[-1] >= self.snapshot_times[self.current_index + 1]:
             # swap in new transition matrix
             self.current_index += 1
+            self.shadow_state += self.transient_shadow
+            self.transient_shadow = np.zeros_like(self.shadow_state)
 
         return I_new
 
