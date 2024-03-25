@@ -6,7 +6,7 @@ import igraph as ig
 import glob
 import pathlib
 from scipy import sparse 
-from util import Iden
+from util import Iden, NullIterable
 from typing import Mapping, Iterable, Hashable
 
 _EPS = 1e-14
@@ -84,14 +84,14 @@ class Simulation():
 
         return I_new
     
-    def simulate(self, until=100):
+    def simulate(self, until=100, nostop=False):
         """Performs simualtion by repeated stepping until the specified time
         Can terminate early if the system has no more infected individuals"""
         for ti in range(int(until / self.dt)):
             self.state = self.step()
             self._history.append(self.state)
             self.ts.append(self.ts[-1] + self.dt)
-            if np.sum(self.state) < 1:
+            if np.sum(self.state) < 1 and not nostop:
                 print(f"Early termination: {self.ts[-1] = }")
                 break
 
@@ -110,7 +110,7 @@ class TemporalNetworkSimulation(Simulation):
      Has a convenience method to map a temporal network loaded in with loc and time attrs on nodes to a transition matrix (snapshot representation)
      Performs stepping for the temporal network assuming that dynamics clump at the start of the snapshot time, allows for edges that move both loc and time
      """
-    def __init__(self, hospital_size_mapping, network, prob_final_stay, parameters, dt=1.0):
+    def __init__(self, hospital_size_mapping, network, prob_final_stay, parameters, dt=1.0, track_movers=False):
         # step size is determined by the temporal network
         transition_matrix, net_dt, dimensions = self.map_network_to_transition_matrix(hospital_size_mapping, network)
         self.DIMENSIONS = dimensions
@@ -119,7 +119,13 @@ class TemporalNetworkSimulation(Simulation):
         hospital_sizes = np.asanyarray([v for _,v in sorted(hospital_size_mapping.items())])
         super().__init__(hospital_sizes, transition_matrix, self.prob_final_stay, parameters, dt=dt, remove_diagonal=False, make_removal=False)
         self.time_travellers = np.zeros((self.DIMENSIONS['NLOC'], self.DIMENSIONS['NT']))
-        self.removal_rate = self.compute_removal_rates()
+        self.compute_removal_rates()
+        if track_movers:
+            self.mover_out = []
+            self.mover_in = []
+        else:
+            self.mover_out = NullIterable()
+            self.mover_in = NullIterable()
 
     @staticmethod
     def map_network_to_transition_matrix(hospital_size_mapping: dict[int, int], network: ig.Graph):
@@ -128,7 +134,7 @@ class TemporalNetworkSimulation(Simulation):
         NT = len(times)
         times_by_order = sorted(times.keys())
         DT = times_by_order[1] - times_by_order[0] # assumes regular time grid
-        locs = {k: i for i,k in enumerate(hospital_size_mapping)}
+        locs = {k: i for i,k in enumerate(sorted(hospital_size_mapping))}
         NLOC = len(locs)
         
         txn_matrix_data, txn_matrix_i, txn_matrix_j = [], [], []
@@ -158,52 +164,30 @@ class TemporalNetworkSimulation(Simulation):
 
         NLOC = self.DIMENSIONS['NLOC']
         NT = self.DIMENSIONS['NT']
-        movements_out = self.PP.sum(axis=1).reshape((NT, NLOC)).T
+        movements_out = self.PP.sum(axis=1)
+        M_mat = movements_out.reshape((NLOC, NT), order='F')
         p = self.prob_final_stay.reshape((-1, 1))
-        f = p/(1-p)
-        gamma = f*movements_out
-        return gamma
+        # here we use that M_mat = gamma * (1-p)
+        gamma = M_mat / (1-p)
+        self.removal_rate = gamma
 
+        # now we normalise the movement matrix so we can use in the multinomial later
+        self.PP = (self.PP / movements_out[:,np.newaxis]).tocsr()
 
     def step(self):
         """
-        sketch of step for temporal
+        Simulate a single step of reactions over the timestep size of self.dt
 
-
-        We have the current_state which is a vec of Hx1
-        We have the time travellers which is a Tx(Hx1)vec of Hx1 vecs, which are indexed by their time indexed
-        We have a running time index
-        We update the running time index
-
-
-
-        STEP():
-            compute current time index
-            SUB(): reintroduce time travellers
-                lookup time travellers[current time index]
-                compute hazard():
-                    (next tidx) * DT - (current time + timestep/3)
-                draw poisson(hazard) -> movers
-                subtract movers from time travellers [current time index]
-                    ensure that movers < time travellers
-                add movers to current state
-            
-            SUB(): move out time travellers
-                get the part of the transition matrix which is important
-                sample the poisson leav ers
-                adjust state
-            
-            SUB(): perform infection stuff
-                compute the number of new infected
-                compute the number of recoveries (health)
-                compute the number of removals (length of stay)
-                update state
-
-            SUB(): update time travellers
-                compute the number of recoveries (health)
-        
+        Subprocesses:
+            1. Move individuals from home to the hospital
+            2. Simulate the infection process inside the hospital
+            3. Move individuals out of hospital
+                a. Remove individuals that permanently leave the system
+                b. Partition the individuals that readmit at another hospital
+                    i. Select and immediately move individuals that have immediate transfers
+                    ii. Retain individuals that have indirect transfers
         """
-        beta, gamma, eta = self.parameters # transmission, recovery, discharge
+        beta, gamma = self.parameters # transmission, recovery, discharge
         NLOC, NT = self.DIMENSIONS['NLOC'], self.DIMENSIONS['NT']
         N = self.N
 
@@ -211,6 +195,9 @@ class TemporalNetworkSimulation(Simulation):
         # jitter up by small number for computer epsilon
         t = self.ts[-1]
         tidx = int(t / self.DT + 1e-8)
+        XTHIS = tidx * NLOC
+        XNEXT = (tidx + 1) * NLOC
+
         # new_state = np.array(self.state)
 
         # substep 1. reintroduce time travellers
@@ -222,36 +209,37 @@ class TemporalNetworkSimulation(Simulation):
         movers = np.clip(movers, 0, travellers)
         self.time_travellers[:,tidx:tidx+1] = travellers - movers
         new_state = np.clip(self.state + movers, 0, N)
+        self.mover_in.append(new_state - self.state)
 
-        # substep 2: move people out that move into the future
-        XTHIS = tidx * NLOC
-        XNEXT = (tidx + 1) * NLOC
-        out_transitions = self.PP[XTHIS:XNEXT, XNEXT:] # these have units movers/hospital size per time unit
-        # reshape here to get the axis alignment
-        avg_freeze_rate = out_transitions * self.state.reshape((-1, 1))
-        actual_freezers = sample_poisson_on_sparse(avg_freeze_rate * self.dt, self.rng)
-        outgoing_time_travellers = actual_freezers.sum(axis=1).reshape((-1, 1))
-        incoming_time_travellers = actual_freezers.sum(axis=0).reshape((-1, 1))
-        # when adjusting states, we ensure that the num of ppl leaving is capped at the current remaining pop
-        new_state -= np.clip(outgoing_time_travellers, 0, new_state)
-        self.time_travellers[:,(tidx+1):] += incoming_time_travellers.reshape((-1, NLOC)).T
+        # substep 2: do infection/mass action discharge
+        I = self.state
+        n_inf = self.rng.poisson(beta * (N-I) * I / N * self.dt).astype('int64')
+        n_out = self.rng.poisson(self.removal_rate[:,tidx:tidx+1] * I * self.dt)
+        # truncated poisson: cannot have more people leave than are present
+        n_out = np.clip(n_out, 0, I).astype('int64')
 
-        # substep 3: perform intra-timestep operations (movements/infection)
-        I = new_state
-        n_inf = self.rng.poisson(beta * (N-I) * I / N * self.dt)
-        n_rec = self.rng.poisson(self.removal_rate[:,tidx:tidx+1] * I * self.dt) # TODO: if eta is hospital based
-        mov_I = (self.PP[XTHIS:XNEXT, XTHIS:XNEXT] * I).todense()
-        M_mov_I = self.rng.poisson(np.abs(mov_I) * self.dt) * np.sign(mov_I)
-        n_mov_I = (M_mov_I.sum(axis=0) - M_mov_I.sum(axis=1)).reshape(I.shape)
-        # clipping values at zero to prevent pathological behaviour
-        # this might leak ppl out of/into the system if we are not careful, but it'll be quite small
-        I_new = np.clip(I + n_inf - n_rec + n_mov_I, 0, N)
-        new_state = I_new.reshape((-1, 1))
+        new_state += n_inf - n_out
 
-        # substep 4: perform recovery step for time travellers
-        n_future_rec = self.rng.poisson(gamma * self.time_travellers * self.dt)
-        I_future_new = np.clip(self.time_travellers - n_future_rec, 0, None)
-        self.time_travellers = I_future_new
+        # substep 3a: split out people that never return
+        n_removed = self.rng.binomial(n_out, self.prob_final_stay)
+        n_retained = n_out - n_removed
+
+        # substep 3b: partition individuals that transfer
+        M = self.PP[XTHIS:XNEXT,XTHIS:].todense()
+        n_out = self.rng.multinomial(n_retained.flatten(), M)  # THIS IS REALLY SLOW
+        direct_transfers = n_out[:,:NLOC]
+        indirect_transfers = n_out[:,NLOC:] # has shape NLOC x (Z * NLOC) where Z is the number of future time steps
+
+        # substep 3bi: move the direct transfers
+        direct_movers_influx = direct_transfers.sum(axis=0)
+        new_state += direct_movers_influx.reshape(*new_state.shape)
+
+        # substep 3bii: store the indirect transfers
+        indirect_movers_influx = indirect_transfers.sum(axis=0).reshape((NLOC, -1), order='F')
+        self.time_travellers[:,tidx+1:] += indirect_movers_influx
+
+        # substep 4: truncate the number of infected in each location
+        new_state = np.clip(new_state, 0, N)
 
         return new_state
 
@@ -273,6 +261,8 @@ class TemporalNetworkSimulation(Simulation):
     def reset(self):
         super().reset()
         self.time_travellers = np.zeros_like(self.time_travellers)
+        self.mover_out = type(self.mover_out)()
+        self.mover_in = type(self.mover_in)()
 
     # @property
     # def history(self):
