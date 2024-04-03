@@ -7,6 +7,7 @@ import glob
 import pathlib
 from scipy import sparse 
 from util import Iden, NullIterable
+from multinomial_sample import multinomial_sample_sparse
 from typing import Mapping, Iterable, Hashable
 
 _EPS = 1e-14
@@ -225,17 +226,17 @@ class TemporalNetworkSimulation(Simulation):
         n_retained = n_out - n_removed
 
         # substep 3b: partition individuals that transfer
-        M = self.PP[XTHIS:XNEXT,XTHIS:].todense()
-        n_out = self.rng.multinomial(n_retained.flatten(), M)  # THIS IS REALLY SLOW
-        direct_transfers = n_out[:,:NLOC]
-        indirect_transfers = n_out[:,NLOC:] # has shape NLOC x (Z * NLOC) where Z is the number of future time steps
+        M = self.PP[XTHIS:XNEXT,XTHIS:]
+        n_out_collapsed = multinomial_sample_sparse(n_retained.flatten(), M)
+        # n_out = self.rng.multinomial(n_retained.flatten(), M)  # THIS IS REALLY SLOW
+        indirect_transfers = n_out_collapsed[NLOC:]
 
         # substep 3bi: move the direct transfers
-        direct_movers_influx = direct_transfers.sum(axis=0)
-        new_state += direct_movers_influx.reshape(*new_state.shape)
+        direct_transfers = n_out_collapsed[:NLOC]
+        new_state += direct_transfers.reshape(*new_state.shape)
 
         # substep 3bii: store the indirect transfers
-        indirect_movers_influx = indirect_transfers.sum(axis=0).reshape((NLOC, -1), order='F')
+        indirect_movers_influx = indirect_transfers.reshape((NLOC, -1), order='F')
         self.time_travellers[:,tidx+1:] += indirect_movers_influx
 
         # substep 4: truncate the number of infected in each location
@@ -494,7 +495,7 @@ def sample_poisson_on_sparse(sparse_rates, rng=None):
         rng = np.random.default_rng()
     # convert to COO format
     sparse_rates = sparse_rates.tocoo()
-    # pull sample based on the saprse amtrix non-zero values
+    # pull sample based on the saprse matrix non-zero values
     sample = rng.poisson(sparse_rates.data)
     # generate a new sparse matrix based on the sampled values
     sample_sparse = sparse.coo_array((sample, (sparse_rates.row, sparse_rates.col)), shape=sparse_rates.shape, dtype=sparse_rates.dtype)
