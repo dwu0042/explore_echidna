@@ -8,6 +8,7 @@ from polars import selectors as sel
 from itertools import pairwise
 import argparse
 
+
 def bend_line(y_from: float, y_to: float, n_grid: int = 100):
     """Return an array that represents a bent line
     (from y_from to y_to) with lenght n_grid
@@ -24,13 +25,14 @@ def bend_line(y_from: float, y_to: float, n_grid: int = 100):
 
     return line
 
+
 def sankey_diagram(
     data: pl.DataFrame,
-    save_to: str|None = None,
+    save_to: str | None = None,
     block_scale=1.0,
     block_gap=0.1,
     level_separation=20.0,
-    export='figure',
+    export="figure",
 ):
     """
     Creates a sankey diagram
@@ -95,7 +97,7 @@ def sankey_diagram(
     # 2c. resize the block gap so that we can use it later
     cluster_size = cluster_size.with_columns(pl.col("^.*_size$") / (1 + block_gap))
 
-    if export == 'cluster_size':
+    if export == "cluster_size":
         return cluster_size
     print("blocks determined")
 
@@ -242,6 +244,7 @@ def sankey_diagram(
     else:
         return fig, ax
 
+
 def flow_frame(data: pl.DataFrame):
     """Construct the dataframe of the number of hospitals that move from one cluster to another at each snapshot time"""
     flows = pl.DataFrame(schema={"from": pl.Int64, "to": pl.Int64})
@@ -255,69 +258,96 @@ def flow_frame(data: pl.DataFrame):
             .rename({"count": base_name, col0: "from", col1: "to"})
             .drop_nulls()
         )
-        flows = flows.join(this_flow, on=('from', 'to'), how='outer')
+        flows = flows.join(this_flow, on=("from", "to"), how="outer")
 
-    return flows.sort('from', 'to')
+    return flows.sort("from", "to")
+
 
 def remap_flow_fromto(flows: pl.DataFrame):
-    """ Remaps the identifiers (from/to) of the flows to indexable values """
+    """Remaps the identifiers (from/to) of the flows to indexable values"""
 
-    index_map = flows.select(pl.col('from', 'to')).melt().select(pl.col('value').unique()).with_row_count()
-    return (
-        flows
-        .join(index_map, left_on='from', right_on='value', how='left')
-        .drop('from')
-        .rename({'row_nr': 'from'})
-        .join(index_map, left_on='to', right_on='value', how='left')
-        .drop('to')
-        .rename({'row_nr': 'to'})
+    index_map = (
+        flows.select(pl.col("from", "to"))
+        .melt()
+        .select(pl.col("value").unique())
+        .with_row_count()
     )
+    return (
+        flows.join(index_map, left_on="from", right_on="value", how="left")
+        .drop("from")
+        .rename({"row_nr": "from"})
+        .join(index_map, left_on="to", right_on="value", how="left")
+        .drop("to")
+        .rename({"row_nr": "to"})
+    )
+
 
 def export_flow_matrix(data: pl.DataFrame):
     """Constructs the 3D matrix of flows of hospitals between clusters"""
     flows = flow_frame(data)
     flows = remap_flow_fromto(flows)
-    num_clus = flows.select(pl.col('from', 'to')).melt().select(pl.col('value').unique()).shape[0]
+    num_clus = (
+        flows.select(pl.col("from", "to"))
+        .melt()
+        .select(pl.col("value").unique())
+        .shape[0]
+    )
     flow_mat = np.zeros((num_clus, num_clus, len(flows.columns) - 2))
-    flow_indices = flows.select('from', 'to').to_dict(as_series=False)
-    flow_mat[flow_indices['from'], flow_indices['to']] = flows.drop('from', 'to').fill_null(0).to_numpy()
+    flow_indices = flows.select("from", "to").to_dict(as_series=False)
+    flow_mat[flow_indices["from"], flow_indices["to"]] = (
+        flows.drop("from", "to").fill_null(0).to_numpy()
+    )
     return flow_mat
+
 
 def construct_flow_anim(data: pl.DataFrame, early_stop=0):
     """Constructs an animation of the flow matrices
-    
+
     Parameters
     ----------
     early_stop: number of frames to drop off the end of the animation
-    
+
     """
     flow_matrix = export_flow_matrix(data)
-    sizer = (data.drop('name').max() - 1).select(pl.all().name.map(lambda x: x.split('_')[1])).to_numpy().flatten()
+    sizer = (
+        (data.drop("name").max() - 1)
+        .select(pl.all().name.map(lambda x: x.split("_")[1]))
+        .to_numpy()
+        .flatten()
+    )
 
     fig, ax = plt.subplots()
     ims = []
-    for ii, sz in enumerate(sizer[:-(1+early_stop)]):
-        A = flow_matrix[:sz,:sz,ii]
-        im = ax.imshow(A, norm=colors.PowerNorm(0.5), cmap='inferno', animated=True)
-        if  ii == 0:
-            ax.imshow(A, norm=colors.PowerNorm(0.5), cmap='inferno',)
+    for ii, sz in enumerate(sizer[: -(1 + early_stop)]):
+        A = flow_matrix[:sz, :sz, ii]
+        im = ax.imshow(A, norm=colors.PowerNorm(0.5), cmap="inferno", animated=True)
+        if ii == 0:
+            ax.imshow(
+                A,
+                norm=colors.PowerNorm(0.5),
+                cmap="inferno",
+            )
         ims.append([im])
 
-    return animation.ArtistAnimation(fig, ims, interval=50, blit=True, repeat_delay=1000)
+    return animation.ArtistAnimation(
+        fig, ims, interval=50, blit=True, repeat_delay=1000
+    )
+
 
 def num_clus(data: pl.DataFrame):
     """returns number of clusters at each snapshot
-      clusters indexed from 1, so no need to +1 to get values"""
-    return data.max().drop('name').to_numpy().flatten()
+    clusters indexed from 1, so no need to +1 to get values"""
+    return data.max().drop("name").to_numpy().flatten()
+
 
 def pivot_matrix(A: np.ndarray, copy=True):
     """Pivot the columns of a matrix A so that the dominant elements of the submatrix are along the diagonal
-    
+
     if copy is True, returns a matrix of the same size that is pivoted, along with the pivot vector
     else, only returns the pivot vector"""
 
-    assert np.allclose(*A.shape), 'Input matrix not square'
-    
+    assert np.allclose(*A.shape), "Input matrix not square"
+
     if copy:
         B_ = np.array(A)
         A, B_ = B_, A
@@ -331,19 +361,20 @@ def pivot_matrix(A: np.ndarray, copy=True):
         return A, p
     return p
 
+
 def matrix_diagonalness_coefficient(A: np.ndarray):
     """Compute the "diagonalness" of a matrix, based on the sample correlation coefficient
-    
+
     Based on a stackexchange post: math.stackexchange.com/questions/1392491
     """
 
-    assert np.allclose(*A.shape), 'Input matrix not square'
+    assert np.allclose(*A.shape), "Input matrix not square"
 
     NN = A.shape[0]
     J = np.ones((NN, 1))
     R = np.arange(NN).reshape((NN, 1))
-    R2 = R ** 2
-    
+    R2 = R**2
+
     n = J.T @ A @ J
     Sx = R.T @ A @ J
     Sy = J.T @ A @ R
@@ -351,48 +382,58 @@ def matrix_diagonalness_coefficient(A: np.ndarray):
     Sy2 = J.T @ A @ R2
     Sxy = R.T @ A @ R
 
-    return ((n * Sxy - Sx * Sy) / np.sqrt( (n * Sx2 - Sx**2) * (n * Sy2 - Sy**2) )).item()
+    return ((n * Sxy - Sx * Sy) / np.sqrt((n * Sx2 - Sx**2) * (n * Sy2 - Sy**2))).item()
+
 
 def matrix_offdiag_coefficient(A: np.ndarray):
     """Compute the "diagonalness" of a matrix, based on the norm of the non-diagonal part
-    
+
     Based off the same post as above: math.stackexchange.com/questions/1392491
     """
 
-    assert np.allclose(*A.shape), 'Input matrix not square'
+    assert np.allclose(*A.shape), "Input matrix not square"
 
     Z = A - np.diag(np.diag(A))
     return 1 - (np.linalg.norm(Z) / np.linalg.norm(A))
 
+
 def matrix_proportion_diagonal_coefficient(A: np.ndarray, axis=0):
     """Compute the diagonalness based on the size of the off-diagonal components cf full matrix"""
 
-    assert np.allclose(*A.shape), 'Input matrix not square'
+    assert np.allclose(*A.shape), "Input matrix not square"
 
     return np.nanmean(np.diagonal(A) / np.sum(A, axis=axis))
 
+
 def extract_slice(A: np.ndarray, ii: int, pivot=False):
-    slc = A[:,:,ii]
+    slc = A[:, :, ii]
     if pivot:
         return pivot_matrix(slc, copy=True)[0]
     else:
         return slc
 
+
 _methods = {
-    'corr': matrix_diagonalness_coefficient,
-    'norm': matrix_offdiag_coefficient,
-    'diag': matrix_proportion_diagonal_coefficient,
+    "corr": matrix_diagonalness_coefficient,
+    "norm": matrix_offdiag_coefficient,
+    "diag": matrix_proportion_diagonal_coefficient,
 }
-def cluster_coherency(flow_mat: np.ndarray, pivot=False, method='corr'):
+
+
+def cluster_coherency(flow_mat: np.ndarray, pivot=False, method="corr"):
     return [
         _methods[method](extract_slice(flow_mat, ii, pivot=pivot))
         for ii in range(flow_mat.shape[-1])
     ]
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument()
 
+
 if __name__ == "__main__":
     dfx = pl.read_csv("flow_reweighted_both_14_365/cluster_by_name.csv")
-    sankey_diagram(dfx, save_to="flow_reweighted_both_14_365/alluvial_diagram_clusters_14.png")
+    sankey_diagram(
+        dfx, save_to="flow_reweighted_both_14_365/alluvial_diagram_clusters_14.png"
+    )
