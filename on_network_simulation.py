@@ -188,7 +188,7 @@ class TemporalNetworkSimulation(Simulation):
                     i. Select and immediately move individuals that have immediate transfers
                     ii. Retain individuals that have indirect transfers
         """
-        beta, gamma = self.parameters # transmission, recovery, discharge
+        beta, *gamma = self.parameters # transmission, recovery, discharge
         NLOC, NT = self.DIMENSIONS['NLOC'], self.DIMENSIONS['NT']
         N = self.N
 
@@ -264,6 +264,17 @@ class TemporalNetworkSimulation(Simulation):
         self.time_travellers = np.zeros_like(self.time_travellers)
         self.mover_out = type(self.mover_out)()
         self.mover_in = type(self.mover_in)()
+
+    def delay(self, n: int):
+        """Post-initailisation, starts the simulation from the n-th time index"""
+        NLOC = self.DIMENSIONS['NLOC']
+        NIDX = int(n * NLOC)
+
+        self.DIMENSIONS['NT'] -= n
+        self.state = self.state[NIDX:]
+        self.time_travellers = self.time_travellers[:,n:]
+        self.removal_rate = self.removal_rate[:,n:]
+        self.PP = self.PP[NIDX:, NIDX:]
 
     # @property
     # def history(self):
