@@ -1,5 +1,6 @@
 import numpy as np
 from numba import njit
+from numba import guvectorize, float64, int64
 from scipy import sparse
 
 @njit()
@@ -75,20 +76,17 @@ def multinomial_sparse_full(trials, prob_matrix: sparse.csr_matrix):
         prob_matrix.shape
     )
 
-@njit()
-def _trunc_pois(lam, clip_bound_lower, clip_bound_upper, output_shape):
-    raw = np.zeros_like(lam, dtype=np.int64)
-    for i, v in enumerate(lam):
-        if v == 0: continue
-        raw[i] = np.random.poisson(v)
-    output = raw.reshape(output_shape)
-    return np.clip(output, clip_bound_lower, clip_bound_upper)
+@guvectorize([(float64[:], int64, int64[:], int64[:])], '(n),(),(n)->(n)')
+def _trunc_pois_u(lam, lb, ub, res):
+    for i, (v, u) in enumerate(zip(lam, ub)):
+        res[i] = max(min(np.random.poisson(v), u), lb)
+
 
 def truncated_poisson(rates, lower_bound, upper_bound):
 
-    return _trunc_pois(
+    x = _trunc_pois_u(
         rates.flatten(),
-        lower_bound, 
-        upper_bound, 
-        rates.shape
+        lower_bound,
+        upper_bound.flatten(),
     )
+    return x.reshape(rates.shape)

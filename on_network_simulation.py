@@ -6,8 +6,8 @@ import igraph as ig
 import glob
 import pathlib
 from scipy import sparse 
-from util import Iden, NullIterable
-from multinomial_sample import multinomial_sample_sparse
+from util import Iden, DevNull
+from numba_sample import multinomial_sample_sparse_collapsed, multinomial_sparse_full, truncated_poisson
 from typing import Mapping, Iterable, Hashable
 
 _EPS = 1e-14
@@ -125,8 +125,8 @@ class TemporalNetworkSimulation(Simulation):
             self.mover_out = []
             self.mover_in = []
         else:
-            self.mover_out = NullIterable()
-            self.mover_in = NullIterable()
+            self.mover_out = DevNull()
+            self.mover_in = DevNull()
 
     @staticmethod
     def map_network_to_transition_matrix(hospital_size_mapping: dict[int, int], network: ig.Graph):
@@ -224,11 +224,11 @@ class TemporalNetworkSimulation(Simulation):
         # substep 3a: split out people that never return
         n_removed = self.rng.binomial(n_out, self.prob_final_stay)
         n_retained = n_out - n_removed
+        self.mover_out.append(n_retained)
 
         # substep 3b: partition individuals that transfer
         M = self.PP[XTHIS:XNEXT,XTHIS:]
-        n_out_collapsed = multinomial_sample_sparse(n_retained.flatten(), M)
-        # n_out = self.rng.multinomial(n_retained.flatten(), M)  # THIS IS REALLY SLOW
+        n_out_collapsed = multinomial_sample_sparse_collapsed(n_retained.flatten(), M)
         indirect_transfers = n_out_collapsed[NLOC:]
 
         # substep 3bi: move the direct transfers
@@ -332,7 +332,7 @@ class SnapshotNoveauSimulation(Simulation):
         c = 1/np.sum(s)
         return c*s
 
-    def __init__(self, hospital_size_mapping, snapshots, prob_final, parameters, dt=1.0, trunc=26):
+    def __init__(self, hospital_size_mapping, snapshots, prob_final, parameters, dt=1.0, trunc=26, track_movers=False):
         self.hospital_ordering = self.order_hospital_size_mapping(hospital_size_mapping)
         self.NHOSP = len(self.hospital_ordering)
         self.hospital_lookup = [hospital for hospital in self.hospital_ordering.keys()]
@@ -349,11 +349,17 @@ class SnapshotNoveauSimulation(Simulation):
         # adjust weighting on the 'direct', 'out', 'in' transition matrices to reflect correct prob tree
         self.transform_out_transition_matrix()
         self.transform_in_transition_matrix(trunc=trunc)
+        if track_movers:
+            self.mover_in = []
+            self.mover_out = []
+        else:
+            self.mover_in = DevNull()
+            self.mover_out = DevNull()
 
         super().__init__(self.hospital_sizes, None, None, parameters, dt=dt, remove_diagonal=False, make_removal=False)
         self.current_index = 0
-        self.shadow_state = np.zeros((self.NHOSP, self.NHOSP))
-        self.transient_shadow = np.zeros_like(self.shadow_state)
+        self.shadow_state = np.zeros((self.NHOSP, self.NHOSP), dtype=np.int64)
+        self.transient_shadow = np.zeros_like(self.shadow_state, dtype=np.int64)
 
     def transform_out_transition_matrix(self):
         self.transition_matrices['out'] = []
@@ -363,7 +369,10 @@ class SnapshotNoveauSimulation(Simulation):
             self.leave_rate.append(Sig / (1-self.prob_final).reshape((-1, 1)))
             Dp = D / Sig
             Up = U / Sig
-            self.transition_matrices['out'].append(np.hstack([np.nan_to_num(Dp), np.nan_to_num(Up)]))
+            dense_out_matrix = np.hstack([np.nan_to_num(Dp), np.nan_to_num(Up)])
+            sparse_out_matrix = sparse.csr_array(dense_out_matrix)
+            sparse_out_matrix.eliminate_zeros()
+            self.transition_matrices['out'].append(sparse_out_matrix)
 
     def transform_in_transition_matrix(self, trunc=26):
         self.transition_matrices['in'] = []
@@ -382,9 +391,11 @@ class SnapshotNoveauSimulation(Simulation):
 
     def reset(self):
         super().reset()
-        self.shadow_state = np.zeros((self.NHOSP, self.NHOSP))
-        self.transient_shadow = np.zeros_like(self.shadow_state)
+        self.shadow_state = np.zeros((self.NHOSP, self.NHOSP), dtype=np.int64)
+        self.transient_shadow = np.zeros_like(self.shadow_state, dtype=np.int64)
         self.current_index = 0
+        self.mover_out = type(self.mover_out)()
+        self.mover_in = type(self.mover_in)()
 
     @staticmethod
     def order_hospital_size_mapping(hospital_size_mapping):
@@ -406,18 +417,20 @@ class SnapshotNoveauSimulation(Simulation):
 
         n_abandon = self.rng.binomial(n_out, self.prob_final)
         n_remain = n_out - n_abandon
+        self.mover_out.append(n_remain)
 
-        move_to = self.rng.multinomial(n_remain.flatten(), self.transition_matrices['out'][self.current_index])
+        # move_to = self.rng.multinomial(n_remain.flatten(), self.transition_matrices['out'][self.current_index])
+        move_to = multinomial_sparse_full(n_remain.flatten(), self.transition_matrices['out'][self.current_index])
         direct_move_to = move_to[:, :self.NHOSP].sum(axis=0).reshape(NARROW)
         indirect_move_to = move_to[:, self.NHOSP:].reshape(WIDE)
 
         indirect_return_rate = self.transition_matrices['in'][self.current_index] * X
-        indirect_returns_raw = self.rng.poisson(indirect_return_rate * self.dt)
-        indirect_returns_wide = np.clip(indirect_returns_raw.reshape(WIDE), 0, X)
+        indirect_returns_raw = truncated_poisson(indirect_return_rate * self.dt, 0, X)
         indirect_returns = indirect_returns_raw.sum(axis=1).reshape(NARROW)
+        self.mover_in.append(indirect_returns)
 
         I_new = np.clip(I + n_inf - n_out + direct_move_to + indirect_returns, 0, self.N)
-        self.shadow_state = X - indirect_returns_wide
+        self.shadow_state = X - indirect_returns_raw
         self.transient_shadow = Z + indirect_move_to
 
         if self.ts[-1] >= self.snapshot_times[self.current_index + 1]:

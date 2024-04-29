@@ -8,7 +8,7 @@ class Iden():
     def __setitem__(self, x):
         raise TypeError("Identity objects do not support assignment")
     
-class NullIterable():
+class DevNull():
     def __init__(self):
         pass
 
