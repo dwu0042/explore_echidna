@@ -7,7 +7,7 @@ import igraph as ig
 import glob
 import pathlib
 from scipy import sparse
-from util import Iden, DevNull
+from util import Iden, BlackHole
 from numba_sample import (
     multinomial_sample_sparse_collapsed,
     multinomial_sparse_full,
@@ -66,7 +66,7 @@ class Simulation:
         self.ts = [0.0]
 
     def seed(self, n_seedings=1, seed_value=1, wipe=True, rng_seed=None):
-        """Sets the initial condition, by seedig a number of hospitals with some number of infected each
+        """Sets the initial condition, by seeding a number of hospitals with some number of infected each
         Does not perform sanity checking on the number of individuals to infect with each seeding event
         If wipe is True, calls the .reset method
         The rng seed can be specified.
@@ -171,8 +171,8 @@ class TemporalNetworkSimulation(Simulation):
             self.mover_out = []
             self.mover_in = []
         else:
-            self.mover_out = DevNull()
-            self.mover_in = DevNull()
+            self.mover_out = BlackHole()
+            self.mover_in = BlackHole()
 
     @staticmethod
     def map_network_to_transition_matrix(
@@ -448,8 +448,8 @@ class SnapshotNoveauSimulation(Simulation):
             self.mover_in = []
             self.mover_out = []
         else:
-            self.mover_in = DevNull()
-            self.mover_out = DevNull()
+            self.mover_in = BlackHole()
+            self.mover_out = BlackHole()
 
         super().__init__(
             self.hospital_sizes,
@@ -486,7 +486,7 @@ class SnapshotNoveauSimulation(Simulation):
                 # special case at t=0
                 self.transition_matrices["in"].append(E)  # should be all zeros
                 continue
-            powker = self.power_kernel(i)
+            powker = self.power_kernel(i, trunc=trunc)
             i_start = np.clip(i - trunc, 0, i)
             U_out = np.sum(
                 self.raw_transition_matrices["out"][i_start:i]

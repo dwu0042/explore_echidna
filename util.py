@@ -1,3 +1,7 @@
+from typing import Any
+import numpy as np
+import numba as nb
+
 class Iden():
     def __init__(self):
         pass
@@ -8,7 +12,7 @@ class Iden():
     def __setitem__(self, x):
         raise TypeError("Identity objects do not support assignment")
     
-class DevNull():
+class BlackHole():
     def __init__(self):
         pass
 
@@ -17,3 +21,12 @@ class DevNull():
 
     def __iter__(self):
         yield
+
+@nb.njit()
+def nparr_find(array: np.ndarray, item: Any):
+    for idx, val in np.ndenumerate(array):
+        if val == item:
+            return idx
+        
+class NotFound(Exception):
+    pass
