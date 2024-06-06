@@ -36,6 +36,9 @@ class Ordering():
         size_mapping = esz.quick_read(file_name)
         return cls(size_mapping)
 
+    def conform(self, other: Mapping):
+        return [other.get(x) for x in self]
+
 
 class TemporalNetworkConverter():
     def __init__(self, network: ig.Graph, ordering: Ordering, weight: str|None=None):
