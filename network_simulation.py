@@ -1,10 +1,9 @@
 """this is a base refactor of on_network_simulation"""
 
-
 from typing import Sequence, Mapping
 import numpy as np
 from util import BlackHole
-from numba_sample import multinomial_sparse_full
+from numba_sample import multinomial_sparse_full, truncated_poisson
 
 class Simulation():
     def __init__(self, full_size: Sequence[int], parameters: Mapping, dt=1.0):
@@ -14,13 +13,20 @@ class Simulation():
         self.parameters = parameters
         self.dt = dt
 
-        self.ts = []
-        self._history = []
+        self.ts = [0.0]
+        self._history = [self.state] # softref here should update as initial self.state updates in seed
 
     @property
     def history(self):
         return np.hstack(self._history)
-    
+
+    def export_history(self, to):
+        np.savez_compressed(
+            file = to,
+            ts = self.ts,
+            history = self.history,
+        )
+
     def reset(self, soft=True):
         if soft:
             self.state = self._history[0]
@@ -108,6 +114,13 @@ class SnapshotWithHome(Simulation):
 
         self.shadow_state = np.zeros((self.NHOSP, self.NHOSP), dtype=np.int64)
         self.transient_shadow = np.zeros_like(self.shadow_state, dtype=np.int64)
+
+    def export_history(self, to):
+        np.savez_compressed(
+            file = to,
+            ts = self.ts,
+            history = self.history,
+        )
 
     def reset(self, soft=True):
         super().reset(soft=soft)
