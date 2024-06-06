@@ -161,7 +161,7 @@ class SnapshotWithHome(Simulation):
         indirect_move_to = move_to[:, self.NHOSP :].reshape(WIDE)
 
         indirect_return_rate = TX_in[self.current_index] * X
-        indirect_returns_raw = truncated_poisson(indirect_return_rate * self.dt, 0, X)
+        indirect_returns_raw = truncated_poisson(indirect_return_rate * self.dt, X)
         indirect_returns = indirect_returns_raw.sum(axis=1).reshape(NARROW)
         self.mover_in.append(indirect_returns)
 

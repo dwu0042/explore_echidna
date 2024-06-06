@@ -85,16 +85,49 @@ def multinomial_sparse_full(trials, prob_matrix: sparse.csr_matrix):
     )
 
 
-@guvectorize([(float64[:], int64, int64[:], int64[:])], "(n),(),(n)->(n)")
-def _trunc_pois_u(lam, lb, ub, res):
-    for i, (v, u) in enumerate(zip(lam, ub)):
-        res[i] = max(min(np.random.poisson(v), u), lb)
+@njit()
+def truncated_poisson(rates, upper_bound):
+    """Performs an upper-truncated poisson sampling over a 2D array of rates
+    
+    Arguments
+    ---
+    rates: <np.ndarray[float]> 2D array of rates to sample a poisson-distributed random variable at
+    upper_bound: <np.ndarray[int]> 2D array of upper bounds to truncate the random draw at
 
+    Notes
+    ---
+    Structure taken from https://stackoverflow.com/a/72465167
+    Things to note are 
+        - explicit bound checking avoidance via assert
+        - iteration via indexing
+        - reduction of branching using min
+            - branch for the zero is justified, as we expect rates to be relatively sparse
+                - avoids expensive random draw
+    """
 
-def truncated_poisson(rates, lower_bound, upper_bound):
-    x = _trunc_pois_u(
-        rates.flatten(),
-        lower_bound,
-        upper_bound.flatten(),
-    )
-    return x.reshape(rates.shape)
+    ny, nx = rates.shape
+    assert rates.shape == upper_bound.shape
+
+    draws = np.zeros((nx, ny), dtype=np.int64)
+
+    for i in range(nx):
+        rates_row = rates[i, :]
+        ub_row = upper_bound[i, :]
+
+        for j in range(ny):
+            assert j >= 0
+
+            lmbd = rates_row[j]
+            ub = ub_row[j]
+
+            if lmbd == 0 or ub == 0:
+                # draws[i,j] = 0 
+                continue
+
+            draw = np.random.poisson(lmbd)
+
+            draw = min(draw, ub)
+
+            draws[i,j] = draw
+
+    return draws
