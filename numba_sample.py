@@ -52,9 +52,14 @@ def multinomial_sample_sparse_collapsed(trials, prob_matrix: sparse.csr_array):
 def _mn_sparse_full(
     input_vector, prob_matrix_data, prob_matrix_indices, prob_matrix_indptr, output_size
 ):
-    result = np.zeros(output_size, dtype=np.int64)
+    n_in = len(input_vector)
+    x_out, _ = output_size
+    assert n_in == x_out
 
-    for i, v in enumerate(input_vector):
+    result = np.zeros(output_size, dtype=np.int64)
+    
+    for i in range(n_in):
+        v = input_vector[i]
         if v == 0:
             continue
 
