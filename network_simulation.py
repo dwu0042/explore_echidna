@@ -32,7 +32,7 @@ class Simulation():
             self.state = self._history[0]
         else:
             self.state = np.zeros_like(self.state)
-        self._history = self.state
+        self._history = [self.state]
         self.ts = [0.0]
 
     def seed(self, n_seed_events=1, n_seed_number=1, rng_seed=None):
