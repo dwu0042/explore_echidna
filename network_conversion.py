@@ -160,7 +160,8 @@ class SnapshotWithHomeConverter():
 
     def __init__(self, 
                  network_snaphots: Mapping[int, ig.Graph], 
-                 ordering: Ordering, 
+                 ordering: Ordering,
+                 kernel_expo: float=-0.6,
                  trunc: int=26):
 
         self.ordering = ordering
@@ -186,7 +187,7 @@ class SnapshotWithHomeConverter():
         self.outwards_weighting_matrices = None
         self.inwards_weighting_matrices = None
         self.outwards_flow_weight = None
-        self.compute_weighting_matrices(trunc=trunc)
+        self.compute_weighting_matrices(kernel_expo=kernel_expo, trunc=trunc)
 
     @classmethod
     def from_directory(cls, directory: str|Path, *args, **kwargs):
@@ -231,23 +232,23 @@ class SnapshotWithHomeConverter():
             matrix_size=len(self.ordering.order)
         )
 
-    def compute_weighting_matrices(self, trunc=26):
+    def compute_weighting_matrices(self, kernel_expo=-0.6, trunc=26):
 
         out_weights, out_sums = self.compute_outwards_weighting_matrices_and_sum()
-        in_weights = self.compute_inwards_weighting_matrices(trunc=trunc)
+        in_weights = self.compute_inwards_weighting_matrices(kernel_expo=kernel_expo, trunc=trunc)
 
         self.outwards_weighting_matrices = out_weights
         self.inwards_weighting_matrices = in_weights
         self.outwards_flow_weight = out_sums
 
-    def compute_inwards_weighting_matrices(self, trunc=26):
+    def compute_inwards_weighting_matrices(self, kernel_expo=-0.6, trunc=26):
         inwards_weighting_matrices = []
         for i, E in enumerate(self.raw_transition_matrices["in"]):
             if i == 0:
                 # special case at t=0
                 inwards_weighting_matrices.append(E)  # should be all zeros
                 continue
-            powker = self.power_kernel(i, trunc=trunc)
+            powker = self.power_kernel(i, power=kernel_expo, trunc=trunc)
             i_start = np.clip(i - trunc, 0, i)
             U_out = np.sum(
                 self.raw_transition_matrices["out"][i_start:i]
@@ -260,7 +261,7 @@ class SnapshotWithHomeConverter():
             inwards_weighting_matrices.append(E_transformed)
 
         return inwards_weighting_matrices
-    
+
     def compute_outwards_weighting_matrices_and_sum(self):
         outwards_weighting_matrices = []
         outwards_weighting_sum = []
