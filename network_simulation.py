@@ -115,11 +115,20 @@ class SnapshotWithHome(Simulation):
         self.shadow_state = np.zeros((self.NHOSP, self.NHOSP), dtype=np.int64)
         self.transient_shadow = np.zeros_like(self.shadow_state, dtype=np.int64)
 
-    def export_history(self, to):
+    def export_history(self, to, with_movers=False):
+
+        move_info = dict()
+        if with_movers:
+            move_info = {
+                'mover_in': self.mover_in,
+                'mover_out': self.mover_out,
+            }
+
         np.savez_compressed(
             file = to,
             ts = self.ts,
             history = self.history,
+            **move_info
         )
 
     def reset(self, soft=True):
