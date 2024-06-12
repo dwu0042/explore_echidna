@@ -1,6 +1,7 @@
 import numpy as np
 import numba as nb
 from scipy import sparse
+import polars as pl
 import igraph as ig
 from typing import Mapping, Hashable, Sequence
 from functools import lru_cache
@@ -39,6 +40,22 @@ class Ordering():
     def conform(self, other: Mapping):
         return [other.get(x) for x in self]
 
+class ColumnDict(dict):
+
+    @classmethod
+    def from_file(cls, file, key_name, value_name):
+        df = pl.read_csv(file)
+        return cls(zip(
+                df.select(key_name).to_series().to_list(),
+                df.select(value_name).to_series().to_list(),
+            ))
+
+    @classmethod
+    def from_prob_final_file(cls, file):
+        return cls.from_file(file, "loc", "final_stay")
+
+    def organise_by(self, ordering: Ordering):
+        return ordering.conform(self)
 
 class TemporalNetworkConverter():
     def __init__(self, network: ig.Graph, ordering: Ordering, weight: str|None=None):
