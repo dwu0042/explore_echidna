@@ -15,3 +15,5 @@
 !do_simulation_on_network.py
 !summary_stats_zero.py
 !network_simulation.py
+!network_conversion.py
+!new_network_sim.py
