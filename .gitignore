@@ -13,3 +13,5 @@
 !examine_transfers_for_sizes.py
 !numba_sample.py
 !do_simulation_on_network.py
+!summary_stats_zero.py
+!network_simulation.py
