@@ -1,9 +1,11 @@
 """this is a base refactor of on_network_simulation"""
 
+from ast import comprehension
 from typing import Sequence, Mapping
 import numpy as np
 from util import BlackHole
 from numba_sample import multinomial_sparse_full, truncated_poisson
+import h5py
 
 class Simulation():
     def __init__(self, full_size: Sequence[int], parameters: Mapping, dt=1.0):
@@ -20,12 +22,12 @@ class Simulation():
     def history(self):
         return np.hstack(self._history)
 
-    def export_history(self, to):
-        np.savez_compressed(
-            file = to,
-            ts = self.ts,
-            history = self.history,
-        )
+    def export_history(self, to, identity, **kwargs):
+        with h5py.File(to, mode='a') as h5f:
+            g = h5f.create_group(identity)
+            g.create_dataset('ts', data=self.ts, compression='gzip')
+            g.create_dataset('history', data=self.history, compression='gzip')
+            g.attrs.update(kwargs)
 
     def reset(self, soft=True):
         if soft:
@@ -115,21 +117,18 @@ class SnapshotWithHome(Simulation):
         self.shadow_state = np.zeros((self.NHOSP, self.NHOSP), dtype=np.int64)
         self.transient_shadow = np.zeros_like(self.shadow_state, dtype=np.int64)
 
-    def export_history(self, to, with_movers=False):
-
-        move_info = dict()
-        if with_movers:
-            move_info = {
-                'mover_in': self.mover_in,
-                'mover_out': self.mover_out,
-            }
-
-        np.savez_compressed(
-            file = to,
-            ts = self.ts,
-            history = self.history,
-            **move_info
-        )
+    def export_history(self, to, identity, with_movers=False, **kwargs):
+        if not with_movers:
+            super().export_history(to=to, identity=identity, **kwargs)
+        else:
+            with h5py.File(to, mode='a') as h5f:
+                g = h5f.create_group(identity)
+                g.create_dataset('ts', data=self.ts, compression='gzip')
+                g.create_dataset('history', data=self.history, compression='gzip')
+                for movd in ('mover_out', 'mover_in'):
+                    data = np.squeeze(getattr(self, movd))
+                    g.create_dataset('mover_out', data=data, compression='gzip')
+                g.attrs.update(kwargs)
 
     def reset(self, soft=True):
         super().reset(soft=soft)

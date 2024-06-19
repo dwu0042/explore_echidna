@@ -52,11 +52,11 @@ def create_sim(converter: netcon.SnapshotWithHomeConverter, parameters, seeds=1,
     return sim
 
 
-def simulate_sim_and_record(simulation: netsim.SnapshotWithHome, until=100, nostop=False, outfile=None, with_movers=False):
+def simulate_sim_and_record(simulation: netsim.SnapshotWithHome, simid, until=100, nostop=False, outfile=None, with_movers=False, **kwargs):
 
     simulation.simulate(until=until, nostop=nostop)
 
-    simulation.export_history(outfile, with_movers=with_movers)
+    simulation.export_history(outfile, identity=simid, with_movers=with_movers, **kwargs)
 
 
 
@@ -92,5 +92,9 @@ if __name__ == "__main__":
 
             sim.state[i] = v
 
-            outname = f"zero_ss_new_sims/sim_{i}_{datetime.datetime.now().strftime('%y%m%d_%H%M%S')}.npz"
-            simulate_sim_and_record(sim, until=8*365, nostop=True, outfile=outname, with_movers=True)
+            now = datetime.datetime.now()
+            simdate = now.strftime('%y%m%d')
+            simtime = now.strftime('%H%M%S')
+            simid = int(simdate + simtime)
+            outname = f"zero_ss_new_sims/sim_all.h5"
+            simulate_sim_and_record(sim, simid=simid, until=8*365, nostop=True, outfile=outname, with_movers=True, simdate=simdate, simtime=simtime, seed=i)
