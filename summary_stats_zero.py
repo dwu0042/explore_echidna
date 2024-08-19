@@ -2,9 +2,11 @@
 
 import re
 from pathlib import Path
+from typing import Iterable
 from matplotlib import pyplot as plt
 import numpy as np
 import polars as pl
+import h5py
 
 """
 - hitting time
@@ -15,7 +17,7 @@ import polars as pl
 class Realisation:
     __slots__ = [
         "path",
-        "t",
+        "ts",
         "history",
         "mover_out",
         "mover_in",
@@ -95,7 +97,14 @@ class RealisationArray():
         for rlz in self.realisations[filter]:
             collation.append(getattr(Realisation(rlz), metric)(*args, **kwargs))
         return collation
-    
+
+    def multicollect(self, metrics: Iterable[str], filter=slice(0, None), *args, **kwargs):
+        collation = {metric:[] for metric in metrics}
+        for rlz in self.realisations[filter]:
+            for metric in metrics:
+                collation[metric].append(getattr(Realisation(rlz), metric)(*args, **kwargs))
+        return collation
+
     @property
     def metadata(self):
         if self._metadata is None:
@@ -106,3 +115,19 @@ class RealisationArray():
                 schema=Realisation.base_name_schema[self.name_pattern]
             ).with_row_count()
         return self._metadata
+    
+
+    def to_hdf5(self, out):
+        with h5py.File(out, 'w') as h5f:
+            for rlz in self.metadata.to_dicts():
+                g = h5f.create_group(f"sim_{rlz['row_nr']}")
+                g.attrs['seed'] = rlz['seed']
+                g.attrs['simdate'] = rlz['simdate']
+                g.attrs['simtime'] = rlz['simtime']
+                rfl = self.realisations[rlz['row_nr']]
+                with np.load(rfl) as ifp:
+                    tarr = ifp.get('ts') or ifp['t']
+                    g.create_dataset('ts', data=tarr.flatten(), compression='gzip')
+                    g.create_dataset('history', data=ifp['history'], compression='gzip')
+                    g.create_dataset('mover_in', data=np.squeeze(ifp['mover_in']), compression='gzip')
+                    g.create_dataset('mover_out', data=np.squeeze(ifp['mover_out']), compression='gzip')

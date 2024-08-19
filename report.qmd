@@ -112,3 +112,45 @@ $$n_h(i, j, t) \approx \int_{t-T}^t n_g(i, j, \tau) r(t - \tau) d\tau.$$
 We truncate this approximation at some bandwith time $T$.
 
 The retrun time distribution is presented in @figure-??. We fit a power law model $r(\tau) \sim \tau ^k$ with coefficient $k \approx -0.6$.
+
+## Simulation Details and Model
+
+We keep records of two sets of states:
+
+1. $n(t, x)$, the current number of infected at location $x$. This represents individuals in hospital.
+2. $u(t, x, y)$, the current number of individuals that came from location $x$ and will depart for location $y$ at some point in the future. This represents the number of people at home.
+
+Each snapshot can be considered a graph composed of vertices $V$ that correspond to locations, and have edges $E$.
+
+Edges of the temporal network, $e(x, s, y, t)$ from location $x$ at time $s$ to location $y$ at time $t$ with some weight $w$ can be decomposed:
+
+1. if $s = t$, construct an edge $e(x, y)$ with weight $w$
+2. if $s \neq t$ construct two edges:
+   1. $e_o(x, y, s)$ if it doesn't exist, and add weight $w$
+   2. $e_i(x, y, t)$ if it doesn't exist, and add weight $w$
+
+
+We can alternatively conceptualise this as decomposing the temporal edges into movements to a "home" node for each pair of hospitals. The edges $e_o(x, y, s)$ can be conceptualised as an edge between $x$ and a new "home" node denoted by the ordered pair $(x, y)$ at time $s$.
+
+```{python}
+#| echo: false
+
+# we're going to use networkx and its layout engine to draw the diagram cause the other engines are dogwater
+import networkx as nx
+from matplotlib import pyplot as plt
+
+fig = plt.figure()
+grid = fig.add_gridspec(2, 1, hspace=0)
+ax1, ax2 = grid.subplots(sharex=True, squeeze=True)
+for ax in (ax1, ax2):
+    ax.set_box_aspect(1)
+
+ABC = nx.DiGraph(['AB', 'BC', 'BA', 'CB', 'AC', 'CA'])
+nx.draw_networkx(ABC, ax=ax1, with_labels=True)
+
+```
+
+
+## Searching snapshots for information on unlikely paths
+
+We observed some empirical simulated hitting time survival curves that suggested that paths that did exist and were likely on the temporal network did not exist or were very unlikely on the equivalent snapshots. This seems confusing, since the snapshot representation _should_ represent a superset of possible movements.

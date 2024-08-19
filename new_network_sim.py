@@ -3,11 +3,11 @@ import numpy as np
 import network_conversion as netcon
 import network_simulation as netsim
 
-def create_snaphome_parameter_converter(ordering_file, snapshots_directory, kerpow=-0.6, trunc=26):
+def create_snaphome_parameter_converter(ordering_file, snapshots_directory):
 
     ordering = netcon.Ordering.from_file(ordering_file)
 
-    converter = netcon.SnapshotWithHomeConverter.from_directory(snapshots_directory, ordering=ordering, kernel_expo=kerpow, trunc=trunc)
+    converter = netcon.SnapshotWithHomeConverter.from_directory(snapshots_directory, ordering=ordering)
 
     return converter
 
@@ -65,15 +65,15 @@ def simulate_sim_and_record(simulation: netsim.SnapshotWithHome, simid, until=10
 if __name__ == "__main__":
     import datetime
 
-    # conv = create_snaphome_parameter_converter(
-    #     ordering_file="./concordant_networks/size_14.csv",
-    #     snapshots_directory="./conc_tempo_14_detailed/",
-    # )
+    conv = create_snaphome_parameter_converter(
+        ordering_file="./concordant_networks/size_14.csv",
+        snapshots_directory="./conc_tempo_14_detailed/",
+    )
 
-    import pickle
+    # import pickle
 
-    with open("snapconverter.pkl", 'rb') as ifp:
-        conv = pickle.load(ifp)
+    # with open("snapconverter.pkl", 'rb') as ifp:
+    #     conv = pickle.load(ifp)
 
     params = init_zero_params(
         conv, "./probability_of_final_stay_by_shuffled_campus.csv"
@@ -96,5 +96,5 @@ if __name__ == "__main__":
             simdate = now.strftime('%y%m%d')
             simtime = now.strftime('%H%M%S')
             simid = int(simdate + simtime)
-            outname = f"zero_ss_new_sims/sim_all.h5"
+            outname = f"zero_ss_exact_home_sims/sim_all.h5"
             simulate_sim_and_record(sim, simid=simid, until=8*365, nostop=True, outfile=outname, with_movers=True, simdate=simdate, simtime=simtime, seed=i)
