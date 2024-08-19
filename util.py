@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Protocol, TypeVar
 import numpy as np
 import numba as nb
 
@@ -11,7 +11,7 @@ class Iden():
     
     def __setitem__(self, x):
         raise TypeError("Identity objects do not support assignment")
-    
+
 class BlackHole():
     def __init__(self):
         pass
@@ -30,3 +30,9 @@ def nparr_find(array: np.ndarray, item: Any):
         
 class NotFound(Exception):
     pass
+
+T = TypeVar('T', covariant=True)
+K = TypeVar('K', contravariant=True)
+class SupportsGet(Protocol[K, T]):
+    def __getitem__(self, key: K) -> T:
+        ...

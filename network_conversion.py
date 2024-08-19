@@ -1,15 +1,18 @@
+import abc
+from os import PathLike
 import numpy as np
 import numba as nb
 from scipy import sparse
 import polars as pl
 import igraph as ig
-from typing import Mapping, Hashable, Sequence
+from typing import Mapping, Hashable, Sequence, Any, SupportsFloat as Numeric, Iterable
 from functools import lru_cache
 from pathlib import Path
-from util import Iden, nparr_find, NotFound
+from util import Iden, nparr_find, NotFound, SupportsGet
 import examine_transfers_for_sizes as esz
 
-class Ordering():
+
+class Ordering:
     def __init__(self, order_mapping: Mapping):
         """Constructs an ordering of objectes, based on a mapping of values that can be ordered"""
         self.order = np.asanyarray(sorted(order_mapping.keys()))
@@ -22,6 +25,9 @@ class Ordering():
     def __iter__(self):
         for item in self.order:
             yield item
+
+    def __len__(self):
+        return len(self.order)
 
     @lru_cache()
     def __getitem__(self, key):
@@ -40,15 +46,22 @@ class Ordering():
     def conform(self, other: Mapping):
         return [other.get(x) for x in self]
 
-class ColumnDict(dict):
+    def __call__(self, key):
+        """returns the size of the object"""
+        idx = self[key]
+        return self.sizes[idx]
 
+
+class ColumnDict(dict):
     @classmethod
     def from_file(cls, file, key_name, value_name):
         df = pl.read_csv(file)
-        return cls(zip(
+        return cls(
+            zip(
                 df.select(key_name).to_series().to_list(),
                 df.select(value_name).to_series().to_list(),
-            ))
+            )
+        )
 
     @classmethod
     def from_prob_final_file(cls, file):
@@ -57,17 +70,29 @@ class ColumnDict(dict):
     def organise_by(self, ordering: Ordering):
         return ordering.conform(self)
 
-class TemporalNetworkConverter():
-    def __init__(self, network: ig.Graph, ordering: Ordering, weight: str|None=None):
+
+class Converter(abc.ABC):
+    @abc.abstractmethod
+    def __init__(self, network: ig.Graph, ordering: Ordering):
+        pass
+
+    @abc.abstractmethod
+    def map_parameters(self, parameters: Mapping):
+        pass
+
+
+class TemporalNetworkConverter(Converter):
+    def __init__(
+        self, network: ig.Graph, ordering: Ordering, weight: str | None = None
+    ):
         """Extracts transition matrix from a network"""
-        
-        times = {k: i for i,k in enumerate(sorted(network.vs['time']))}
+
+        times = {k: i for i, k in enumerate(sorted(network.vs["time"]))}
         NT = len(times)
         times_by_order = sorted(times.keys())
         DT = times_by_order[1] - times_by_order[0]  # assumes regular time grid
         locs = {k: i for i, k in enumerate(ordering)}
         NLOC = len(locs)
-
 
         txn_matrix_data, txn_matrix_i, txn_matrix_j = [], [], []
 
@@ -95,54 +120,52 @@ class TemporalNetworkConverter():
         self.DT = DT
         self.NLOC = NLOC
         self.NT = NT
-    
-        raise NotImplemented
 
+        raise NotImplemented
 
     @property
     def DIMENSIONS(self):
-        return {
-            'NLOC': self.NLOC,
-            'NT': self.NT
-        }
+        return {"NLOC": self.NLOC, "NT": self.NT}
 
     def map_parameters(self, parameters):
         """converts parameters based on the internal transition matrix"""
         # the required parameters?
         # prob_final_stay -> removal rates
         # beta [transmission] -> remains unchanged
-        
+
         mapped_parameters = dict()
 
-        mapped_parameters['beta'] = parameters['beta']
-        mapped_parameters['prob_final_stay'] = parameters['prob_final_stay']
+        mapped_parameters["beta"] = parameters["beta"]
+        mapped_parameters["prob_final_stay"] = parameters["prob_final_stay"]
 
         movements_out = self.A.sum(axis=1)
         M_mat = movements_out.reshape((self.NLOC, self.NT), order="F")
-        p = parameters['prob_final_stay'].reshape((-1, 1))
+        p = parameters["prob_final_stay"].reshape((-1, 1))
         # here we use that M_mat = gamma * (1-p)
-        mapped_parameters['gamma'] = M_mat / (1 - p)
+        mapped_parameters["gamma"] = M_mat / (1 - p)
 
-        mapped_parameters['transition_matrix'] = (self.A / movements_out[:, np.newaxis]).tocsr()
+        mapped_parameters["transition_matrix"] = (
+            self.A / movements_out[:, np.newaxis]
+        ).tocsr()
 
         return mapped_parameters
 
 
 def transition_matrix_from_graph(
     graph: ig.Graph,
-    ordering: Mapping|Sequence = None,
-    scaling_per_node: Sequence = None,
+    ordering: SupportsGet | None = None,
+    scaling_per_node: Sequence | None = None,
     global_scaling: float = 1,
-    ordering_key: Hashable = None,
+    ordering_key: Hashable | None = None,
     adjacency_attribute: Hashable = None,
-    matrix_size: int = None,
+    matrix_size: int | None = None,
 ):
     """Given a Graph, generates the associated transition matrix
 
     Allows for arbitrary ordering given by"""
 
     if ordering is None:
-        ordering = Iden()  # implicit identitiy mapping
+        ordering = Iden()  # implicit identity mapping
     if ordering_key is None:
         graph_order_base = graph.vs.indices
     else:
@@ -166,8 +189,7 @@ def transition_matrix_from_graph(
     return transition_matrix
 
 
-class SnapshotWithHomeConverter():
-
+class SnapshotWithHomeConverter(Converter):
     ADJTYPES = ("direct", "out", "in")
     ADJMAP = {
         "direct": "weight",
@@ -175,24 +197,23 @@ class SnapshotWithHomeConverter():
         "in": "arrivals",
     }
 
-    def __init__(self, 
-                 network_snaphots: Mapping[int, ig.Graph], 
-                 ordering: Ordering,
-                 kernel_expo: float=-0.6,
-                 trunc: int=26):
-
+    def __init__(
+        self,
+        network_snapshots: Mapping[int, ig.Graph],
+        ordering: Ordering,
+    ):
         self.ordering = ordering
 
-        self.snapshot_times = sorted(network_snaphots.keys())
+        self.snapshot_times = sorted(network_snapshots.keys())
         self.snapshot_durations = np.diff(self.snapshot_times)
 
         # construct raw transition matrices that are to be parsed into weighting matrices
         self.raw_transition_matrices = {
             adjtype: [
                 self.parse_transition_matrix_from_graph(
-                    network_snaphots[snapshot_time], 
-                    duration=snapshot_duration, 
-                    adj_key=self.ADJMAP[adjtype]
+                    network_snapshots[snapshot_time],
+                    duration=snapshot_duration,
+                    adj_key=self.ADJMAP[adjtype],
                 )
                 for snapshot_time, snapshot_duration in zip(
                     self.snapshot_times, self.snapshot_durations
@@ -204,16 +225,15 @@ class SnapshotWithHomeConverter():
         self.outwards_weighting_matrices = None
         self.inwards_weighting_matrices = None
         self.outwards_flow_weight = None
-        self.compute_weighting_matrices(kernel_expo=kernel_expo, trunc=trunc)
+        self.compute_weighting_matrices()
 
     @classmethod
-    def from_directory(cls, directory: str|Path, *args, **kwargs):
-
+    def from_directory(cls, directory: str | Path, *args, **kwargs):
         snapshots = cls.load_snapshots(directory)
         return cls(snapshots, *args, **kwargs)
 
     @staticmethod
-    def load_snapshots(rootpath: str|Path) -> Mapping[int, ig.Graph]:
+    def load_snapshots(rootpath: str | Path) -> Mapping[int, ig.Graph]:
         snapshots = dict()
         root = Path(rootpath)
         for graphpath in root.glob(f"*.graphml"):
@@ -226,8 +246,8 @@ class SnapshotWithHomeConverter():
     @staticmethod
     @nb.njit()
     def power_kernel(steps, power=-0.6, trunc=26):
-        steps = max(steps, 1) # bound below by 1
-        steps = min(steps, trunc) # bound above by trunc
+        steps = max(steps, 1)  # bound below by 1
+        steps = min(steps, trunc)  # bound above by trunc
         t = np.arange(steps, 0, -1, dtype=nb.float64)
         attributions = t**power
         normalising_constant = np.sum(attributions)
@@ -237,7 +257,7 @@ class SnapshotWithHomeConverter():
         self,
         graph: ig.Graph,
         duration: float,
-        adj_key: str='weight',
+        adj_key: str = "weight",
     ):
         return transition_matrix_from_graph(
             graph=graph,
@@ -246,50 +266,47 @@ class SnapshotWithHomeConverter():
             global_scaling=duration,
             ordering_key="name",
             adjacency_attribute=adj_key,
-            matrix_size=len(self.ordering.order)
+            matrix_size=len(self.ordering.order),
         )
 
-    def compute_weighting_matrices(self, kernel_expo=-0.6, trunc=26):
-
+    def compute_weighting_matrices(self):
         out_weights, out_sums = self.compute_outwards_weighting_matrices_and_sum()
-        in_weights = self.compute_inwards_weighting_matrices(kernel_expo=kernel_expo, trunc=trunc)
+        in_weights = self.compute_inwards_weighting_matrices()
 
         self.outwards_weighting_matrices = out_weights
         self.inwards_weighting_matrices = in_weights
         self.outwards_flow_weight = out_sums
 
-    def compute_inwards_weighting_matrices(self, kernel_expo=-0.6, trunc=26):
+    def compute_inwards_weighting_matrices(self):
         inwards_weighting_matrices = []
-        for i, E in enumerate(self.raw_transition_matrices["in"]):
-            if i == 0:
-                # special case at t=0
-                inwards_weighting_matrices.append(E)  # should be all zeros
-                continue
-            powker = self.power_kernel(i, power=kernel_expo, trunc=trunc)
-            i_start = np.clip(i - trunc, 0, i)
-            U_out = np.sum(
-                self.raw_transition_matrices["out"][i_start:i]
-                * powker[:, np.newaxis, np.newaxis],
-                axis=0,
-            )
-            E_idx = np.where(E)
-            E_transformed = np.zeros_like(E)
-            E_transformed[E_idx] = E[E_idx] / U_out[E_idx]
-            inwards_weighting_matrices.append(E_transformed)
+        at_home = 0
+        for departs, arrives in zip(
+            self.raw_transition_matrices["out"],
+            self.raw_transition_matrices["in"],
+        ):
+            at_home += departs
+            arrive_places = np.where(arrives)
+            inwards_mat = np.zeros_like(arrives)
+            inwards_mat[arrive_places] = arrives[arrive_places] / at_home[arrive_places]
+            inwards_weighting_matrices.append(inwards_mat)
+
+            at_home -= arrives
 
         return inwards_weighting_matrices
 
     def compute_outwards_weighting_matrices_and_sum(self):
         outwards_weighting_matrices = []
         outwards_weighting_sum = []
-        for D, U in zip(
+        for direct, departs in zip(
             self.raw_transition_matrices["direct"], self.raw_transition_matrices["out"]
         ):
-            Sig = (D + U).sum(axis=1).reshape((-1, 1))
-            outwards_weighting_sum.append(Sig)
-            Dp = D / Sig
-            Up = U / Sig
-            dense_out_matrix = np.hstack([np.nan_to_num(Dp), np.nan_to_num(Up)])
+            leaves = (direct + departs).sum(axis=1).reshape((-1, 1))
+            outwards_weighting_sum.append(leaves)
+            direct_prop = direct / leaves
+            departs_prop = departs / leaves
+            dense_out_matrix = np.hstack(
+                [np.nan_to_num(direct_prop), np.nan_to_num(departs_prop)]
+            )
             sparse_out_matrix = sparse.csr_array(dense_out_matrix)
             sparse_out_matrix.eliminate_zeros()
             outwards_weighting_matrices.append(sparse_out_matrix)
@@ -299,14 +316,105 @@ class SnapshotWithHomeConverter():
     def map_parameters(self, parameters):
         mapped_parameters = dict()
 
-        mapped_parameters['beta'] = parameters['beta']
+        mapped_parameters["beta"] = parameters["beta"]
 
-        p = np.asanyarray(parameters['prob_final_stay']).reshape((-1, 1))
-        mapped_parameters['prob_final_stay'] = p
+        p = np.asanyarray(parameters["prob_final_stay"]).reshape((-1, 1))
+        mapped_parameters["prob_final_stay"] = p
 
-        mapped_parameters['gamma'] = [S / (1 - p) for S in self.outwards_flow_weight]
+        mapped_parameters["gamma"] = [S / (1 - p) for S in self.outwards_flow_weight]
 
-        mapped_parameters['transition_matrix_out'] = self.outwards_weighting_matrices
-        mapped_parameters['transition_matrix_in'] = self.inwards_weighting_matrices
+        mapped_parameters["transition_matrix_out"] = self.outwards_weighting_matrices
+        mapped_parameters["transition_matrix_in"] = self.inwards_weighting_matrices
+
+        return mapped_parameters
+
+
+class StaticConverter(Converter):
+    ADJMAP = {
+        "direct": "direct_weight",
+        "indirect": "indirect_weight",
+    }
+
+    def __init__(
+        self, network: ig.Graph, ordering: Ordering, time_span: Numeric | None = None
+    ):
+        self.ordering = ordering
+
+        if time_span is not None:
+            self.time_span = time_span
+        elif "time_span" in network.attributes():
+            self.time_span = network["time_span"]
+        else:
+            raise ValueError("No time span provided")
+
+        self.raw_transition_matrices = {
+            adjtype: transition_matrix_from_graph(
+                graph=network,
+                ordering=self.ordering,
+                scaling_per_node=self.ordering.sizes,
+                global_scaling=self.time_span,
+                ordering_key="node",
+                adjacency_attribute=adjkey,
+                matrix_size=len(self.ordering.order),
+            )
+            for adjtype, adjkey in self.ADJMAP.items()
+        }
+        self.raw_transition_matrices["link_time"] = transition_matrix_from_graph(
+            graph=network,
+            ordering=self.ordering,
+            ordering_key="node",
+            adjacency_attribute="link_time",
+        )
+
+        self.outwards_flow_weight = None
+        self.outwards_weighting_matrix = None
+        self.inwards_weighting_matrix = None
+        self.compute_weighting_matrices()
+
+    @classmethod
+    def from_file(
+        cls, file: PathLike, ordering: Ordering, time_span: Numeric | None = None
+    ):
+        network = ig.Graph.Read(file)
+        return cls(network, ordering, time_span)
+
+    def compute_weighting_matrices(self):
+        # compute outgoing matrix
+
+        direct = self.raw_transition_matrices["direct"]
+        departs = self.raw_transition_matrices["indirect"]
+
+        leaves = (direct + departs).sum(axis=1).reshape((-1, 1))
+        direct_prop = direct / leaves
+        departs_prop = departs / leaves
+        dense_out_matrix = np.hstack(
+            [np.nan_to_num(direct_prop), np.nan_to_num(departs_prop)]
+        )
+        sparse_out_matrix = sparse.csr_array(dense_out_matrix)
+        sparse_out_matrix.eliminate_zeros()
+
+        self.outwards_weighting_matrix = sparse_out_matrix
+        self.outwards_flow_weight = leaves
+
+        # use link time for incoming matrix
+
+        link_time = self.raw_transition_matrices["link_time"]
+        link_rate = link_time**-1
+        link_rate[~np.isfinite(link_rate)] = 0.0
+
+        self.inwards_weighting_matrix = link_rate
+
+    def map_parameters(self, parameters: Mapping) -> Mapping:
+        mapped_parameters = dict()
+
+        mapped_parameters["beta"] = parameters["beta"]
+
+        p = np.asanyarray(parameters["prob_final_stay"]).reshape((-1, 1))
+        mapped_parameters["prob_final_stay"] = p
+
+        mapped_parameters["gamma"] = self.outwards_flow_weight / (1 - p)
+
+        mapped_parameters["transition_matrix_out"] = self.outwards_weighting_matrix
+        mapped_parameters["transition_matrix_in"] = self.inwards_weighting_matrix
 
         return mapped_parameters

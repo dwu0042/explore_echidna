@@ -9,11 +9,21 @@ def load_temporal_network(path):
     return gim.make_graph(path)
 
 
+def temporal_to_static(temponet, direct_threshold=4):
+    edge_list = convert_temporal_network_to_static_edge_list(
+        temponet=temponet, direct_threshold=direct_threshold
+    )
+
+    static_graph = generate_graph_from_edge_list(edge_df=edge_list)
+    static_graph["time_span"] = max(temponet.vs["time"])
+    return static_graph
+
+
 def convert_temporal_network_to_static_edge_list(
     temponet: ig.Graph, direct_threshold=4
 ) -> pl.DataFrame:
     """Convert a full temporal network into a dataframe of edges of the corresponding static network
-    
+
     Differentiates between direct transfers and indirect transfers"""
 
     # extract network information
@@ -33,7 +43,7 @@ def convert_temporal_network_to_static_edge_list(
     # add in column for direct transfer bool flag
     edge_df = edge_df.with_columns(
         direct=((pl.col("dest_time") - pl.col("source_time") < direct_threshold)),
-        link_time=(pl.col('dest_time') - pl.col('source_time'))*pl.col('weight')
+        link_time=(pl.col("dest_time") - pl.col("source_time")) * pl.col("weight"),
     )
 
     # combine edges across time
@@ -53,7 +63,7 @@ def convert_temporal_network_to_static_edge_list(
             pl.col("link_time").list.sum(),
         )
         .with_columns(
-            (pl.col("link_time") / pl.col("indirect_weight")).alias('link_time')
+            (pl.col("link_time") / pl.col("indirect_weight")).alias("link_time")
         )
     )
 
@@ -74,23 +84,26 @@ def generate_graph_from_edge_list(edge_df: pl.DataFrame) -> ig.Graph:
         .to_series()
         .to_list()
     )
-    node_index = {nd: i for i,nd in enumerate(nodes)}
+    node_index = {nd: i for i, nd in enumerate(nodes)}
 
-    G.add_vertices(len(nodes), attributes={'node': nodes})
+    G.add_vertices(len(nodes), attributes={"node": nodes})
 
+    # drop direct self loops and map node indices
     mapped_edge_df = edge_df.with_columns(
-        pl.col('source_loc').map_dict(node_index),
-        pl.col('dest_loc').map_dict(node_index),
+        pl.when(pl.col("source_loc").eq(pl.col("dest_loc")))
+        .then(0.0)
+        .otherwise(pl.col("direct_weight"))
+        .alias("direct_weight")
+    ).with_columns(
+        pl.col("source_loc").map_dict(node_index).alias("mapped_source"),
+        pl.col("dest_loc").map_dict(node_index).alias("mapped_dest"),
     )
 
-    edge_list = mapped_edge_df.select('source_loc', 'dest_loc').to_dict()
-    edges = zip(edge_list['source_loc'], edge_list['dest_loc'])
+    edge_list = mapped_edge_df.select("mapped_source", "mapped_dest").to_dict()
+    edges = zip(edge_list["mapped_source"], edge_list["mapped_dest"])
 
-    edge_info = edge_df.to_dict()
+    edge_info = mapped_edge_df.drop("mapped_source", "mapped_dest").to_dict()
 
-    G.add_edges(
-        es=list(edges),
-        attributes=edge_info
-    )
+    G.add_edges(es=list(edges), attributes=edge_info)
 
     return G
