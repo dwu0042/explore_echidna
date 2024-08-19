@@ -70,11 +70,6 @@ if __name__ == "__main__":
         snapshots_directory="./conc_tempo_14_detailed/",
     )
 
-    # import pickle
-
-    # with open("snapconverter.pkl", 'rb') as ifp:
-    #     conv = pickle.load(ifp)
-
     params = init_zero_params(
         conv, "./probability_of_final_stay_by_shuffled_campus.csv"
     )
