@@ -2,8 +2,9 @@
 
 from typing import Iterable
 import numpy as np
+from numpy.typing import NDArray
 import igraph as ig
-from scipy import optimize
+from scipy import optimize, sparse
 
 
 def Q_mat_naive(G: ig.Graph):
@@ -37,8 +38,15 @@ def _Q_mat(Z: np.ndarray, p_null: np.ndarray):
 
     return Q
 
+def _Q_mat_sparse(A: sparse.sparray):
 
-def min_nonnegative_soln(A: np.ndarray, b: np.ndarray):
+    rowsums = A.sum(axis=1)
+    Q = A.copy()
+    Q.setdiag(-rowsums)
+
+    return Q
+
+def min_nonnegative_soln(A: np.ndarray, b: np.ndarray, full=False):
     """Generic wrapper for solving an ill-conditioned Ax=b linear equation for minimal non-neg x
     
     We wrap the use of scipy.optimize.linprog to solve the linear program:
@@ -69,14 +77,14 @@ def min_nonnegative_soln(A: np.ndarray, b: np.ndarray):
         bounds=bounds,
     )
 
-    if not soln.success:
+    if not soln.success or full:
         return soln
 
     return soln.x
 
-def build_hitting_time_problem(Q: np.ndarray, target_set: Iterable):
+def build_hitting_time_problem(Q: NDArray, target_set: Iterable):
 
-    A = -np.array(Q)
+    A = -Q.copy()
     b = np.ones(Q.shape[0])
     
     for i in target_set:
@@ -86,14 +94,15 @@ def build_hitting_time_problem(Q: np.ndarray, target_set: Iterable):
 
     return A, b
 
-def solve_hitting_time(Q: np.ndarray, target_set: Iterable):
+
+def solve_hitting_time(Q: NDArray, target_set: Iterable):
 
     A, b = build_hitting_time_problem(Q, target_set)
     return min_nonnegative_soln(A, b)
 
 def build_hitting_prob_problem(Q: np.ndarray, target_set: Iterable):
 
-    A = np.array(Q)
+    A = Q.copy()
     b = np.zeros(Q.shape[0])
 
     for i in target_set:

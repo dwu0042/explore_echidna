@@ -73,7 +73,7 @@ def _mn_sparse_full(
     return result
 
 
-def multinomial_sparse_full(trials, prob_matrix: sparse.csr_matrix):
+def multinomial_sparse_full(trials, prob_matrix: sparse.csr_array):
     """Performs numba-acceled multinomial smapling for a large 2D probability matrix
 
     Arguments

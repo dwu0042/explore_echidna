@@ -1,5 +1,6 @@
 import abc
 from os import PathLike
+import random
 import numpy as np
 import numba as nb
 from scipy import sparse
@@ -39,7 +40,7 @@ class Ordering:
         return value[0]
 
     @classmethod
-    def from_file(cls, file_name):
+    def from_file(cls, file_name: PathLike):
         size_mapping = esz.quick_read(file_name)
         return cls(size_mapping)
 
@@ -54,7 +55,7 @@ class Ordering:
 
 class ColumnDict(dict):
     @classmethod
-    def from_file(cls, file, key_name, value_name):
+    def from_file(cls, file: PathLike, key_name, value_name):
         df = pl.read_csv(file)
         return cls(
             zip(
@@ -201,13 +202,27 @@ class SnapshotWithHomeConverter(Converter):
         self,
         network_snapshots: Mapping[int, ig.Graph],
         ordering: Ordering,
+        shuffle_snapshots=False,
+        infer_durations=False,
     ):
         self.ordering = ordering
 
         self.snapshot_times = sorted(network_snapshots.keys())
-        self.snapshot_durations = np.diff(self.snapshot_times)
+        if infer_durations:
+            base_snapshot_durations = np.diff(self.snapshot_times)
+            base_duration_map = {k:d for k,d in zip(self.snapshot_times, base_snapshot_durations)}
 
-        # construct raw transition matrices that are to be parsed into weighting matrices
+        if shuffle_snapshots:
+            random.shuffle(self.snapshot_times)
+
+        # infer the duration scaling for each snapshot
+        if infer_durations:
+            self.snapshot_durations = [base_duration_map[k] for k in self.snapshot_times]
+        else:
+            self.snapshot_durations = [network_snapshots[k]['duration'] for k in self.snapshot_times]
+        
+
+        # construct raw transition matrices that are to be parsed into weighti ng matrices
         self.raw_transition_matrices = {
             adjtype: [
                 self.parse_transition_matrix_from_graph(
@@ -300,6 +315,10 @@ class SnapshotWithHomeConverter(Converter):
         for direct, departs in zip(
             self.raw_transition_matrices["direct"], self.raw_transition_matrices["out"]
         ):
+            # purge direct self-loops as they are non-physical
+            diagidx = np.diag_indices_from(direct)
+            direct[diagidx] = 0.0
+
             leaves = (direct + departs).sum(axis=1).reshape((-1, 1))
             outwards_weighting_sum.append(leaves)
             direct_prop = direct / leaves
@@ -336,7 +355,7 @@ class StaticConverter(Converter):
     }
 
     def __init__(
-        self, network: ig.Graph, ordering: Ordering, time_span: Numeric | None = None
+        self, network: ig.Graph, ordering: Ordering, time_span: Numeric | None = None, purge_selfloops=False
     ):
         self.ordering = ordering
 
@@ -369,20 +388,26 @@ class StaticConverter(Converter):
         self.outwards_flow_weight = None
         self.outwards_weighting_matrix = None
         self.inwards_weighting_matrix = None
-        self.compute_weighting_matrices()
+        self.compute_weighting_matrices(purge_selfloops=purge_selfloops)
 
     @classmethod
     def from_file(
-        cls, file: PathLike, ordering: Ordering, time_span: Numeric | None = None
+        cls, file: PathLike, ordering: Ordering, *args, **kwargs
     ):
         network = ig.Graph.Read(file)
-        return cls(network, ordering, time_span)
+        return cls(network, ordering, *args, **kwargs)
 
-    def compute_weighting_matrices(self):
+    def compute_weighting_matrices(self, purge_selfloops=False):
         # compute outgoing matrix
 
         direct = self.raw_transition_matrices["direct"]
         departs = self.raw_transition_matrices["indirect"]
+
+        if purge_selfloops:
+            for matrix in (direct, departs):
+                diag_idx = np.diag_indices_from(matrix)
+                # these should be soft refs, and thus update
+                matrix[diag_idx] = 0.0
 
         leaves = (direct + departs).sum(axis=1).reshape((-1, 1))
         direct_prop = direct / leaves
@@ -390,6 +415,7 @@ class StaticConverter(Converter):
         dense_out_matrix = np.hstack(
             [np.nan_to_num(direct_prop), np.nan_to_num(departs_prop)]
         )
+
         sparse_out_matrix = sparse.csr_array(dense_out_matrix)
         sparse_out_matrix.eliminate_zeros()
 

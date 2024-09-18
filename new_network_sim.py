@@ -71,7 +71,7 @@ if __name__ == "__main__":
     )
 
     params = init_zero_params(
-        conv, "./probability_of_final_stay_by_shuffled_campus.csv"
+        conv, "./concordant_networks/probability_of_final_stay_by_shuffled_campus.csv"
     )
 
     sim = create_sim(
@@ -91,5 +91,5 @@ if __name__ == "__main__":
             simdate = now.strftime('%y%m%d')
             simtime = now.strftime('%H%M%S')
             simid = int(simdate + simtime)
-            outname = f"zero_ss_exact_home_sims/sim_all.h5"
+            outname = f"zero_sims/snapshot/sim_all_nodirectselfloop.h5"
             simulate_sim_and_record(sim, simid=simid, until=8*365, nostop=True, outfile=outname, with_movers=True, simdate=simdate, simtime=simtime, seed=i)

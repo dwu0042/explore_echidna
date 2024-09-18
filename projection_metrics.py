@@ -1,3 +1,4 @@
+import numpy as np
 import graph_importer as gim
 import polars as pl
 import igraph as ig
@@ -118,11 +119,15 @@ _snapshot_mode = {
 
 def make_snapshots(graph: ig.Graph, output_dir, mode="out", aggmode="sum"):
     times = sorted(set(graph.vs["time"]))
+    durations = np.diff(times)
+    if len(durations) < 1:
+        raise ValueError("Not enough times to construct sane snapshots")
 
     snapper = _snapshot_mode[mode]
 
-    for t in times:
+    for t, dt in zip(times, durations):
         snapshot = snapper(graph, t, aggmode=aggmode)
+        snapshot['duration'] = dt
         snapshot.write_graphml(f"{output_dir}/{t:04}.graphml")
 
 
