@@ -1,19 +1,23 @@
-*
-!.gitignore
-!projection_metrics.py
-!graph_importer.py
-!visualise_centrality_over_time.py
-!tempo2flow.sh
-!clusters.py
-!sankey.py
-!.pipeline.yml
-!edgelist_to_lgl.sh
-!temporal_coherence.py
-!on_network_simulation.py
-!examine_transfers_for_sizes.py
-!numba_sample.py
-!do_simulation_on_network.py
-!summary_stats_zero.py
-!network_simulation.py
-!network_conversion.py
-!new_network_sim.py
+# generic folders
+.ipynb_checkpoints/
+.virtual_documents/
+.vscode
+**__pycache__
+.ruff_cache
+
+# project-specific folders
+old_**/
+conc_**/
+pres**/
+zero_sims/
+concordant_networks/
+
+# project-specific file types
+*.png
+*.out
+*pkl
+*.lgl
+*.profile
+
+reports/report_files
+reports/report.html
