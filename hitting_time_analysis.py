@@ -7,7 +7,7 @@ import network_conversion as ntc
 import hitting_markov as hit
 
 
-### STANDARD STATIC MODEL
+## STANDARD STATIC MODEL
 
 G = ig.Graph.Read("./concordant_networks/shuf_static_network.graphml")
 
@@ -117,7 +117,7 @@ plt.matshow(zhitting_time_arr, norm=colors.LogNorm())
 plt.colorbar(label='hitting time (days)')
 plt.xlabel('to')
 plt.ylabel('from')
-plt.savefig("z_z_static_no_home_time.png", dpi=360)
+plt.savefig("z_z_s.png", dpi=360)
 
 zresidence_times = -1/R.diagonal()
 plt.figure()
@@ -125,3 +125,48 @@ plt.hist(np.log10(zresidence_times), bins=31)
 plt.yscale('log')
 plt.xlabel('$log_{10}$ residence time (log-days)')
 plt.savefig('zstatic_no_home_residence.png', dpi=360)
+
+# we know relative change is usually quite large
+relative_change = zhitting_time_arr / (hitting_time_arr+1) 
+plt.matshow(relative_change)
+plt.colorbar(label='relative change in hitting time')
+plt.xlabel('to')
+plt.ylabel('from')
+plt.savefig("zrelative_change_hitting_time_home.png", dpi=360)
+
+plt.figure()
+plt.hist(relative_change.flatten(), bins=31)
+plt.xlabel("relative change")
+plt.ylabel("frequency")
+plt.yscale('log')
+
+
+
+direct_movement_total_out = T_direct.sum(axis=1)
+direct_movement_total_in = T_direct.sum(axis=0)
+
+indirect_movement_total_out = T_indirect.sum(axis=1)
+indirect_movement_total_in = T_indirect.sum(axis=0)
+
+
+large_indices = np.unravel_index(np.argsort(relative_change, axis=None)[::-1][:5], relative_change.shape)
+large_index_list = np.array(large_indices).T
+
+
+plt.figure()
+plt.scatter(direct_movement_total_out, direct_movement_total_in)
+plt.xscale('log')
+plt.yscale('log')
+
+
+for indices, colour in zip(large_index_list, (f"C{i+1}" for i in range(5))):
+    xs = direct_movement_total_out[list(indices)]
+    ys = direct_movement_total_in[list(indices)]
+    plt.annotate(
+        "",
+        xy = (xs[1], ys[1]),
+        xytext = (xs[0], ys[0]),
+        arrowprops={'headwidth': 6, 'facecolor': colour}
+    )
+
+
