@@ -11,6 +11,8 @@ date: last-modified
 format:
     html: default
     pdf: default
+bibliography: refs.bib
+csl: plos.csl
 ---
 
 # Key Points
@@ -22,6 +24,12 @@ format:
 
 # Introduction
 
+Antimicrobial resistance poses a great threat to human health and development. [@murray_global_2022]
+Globally, it poses a large burden, operationally and economically, on hospital systems.
+
+
+
+
 Antimicrobial resistance is bad. In Victoria, Australia, we have observed CPE, and want to understand how the underlying movement of patients could affect the spread of CPE and other related AMR in the future.
 The focus of this paper is on the patient movement network: ways of representing, simplifying, and approximating those patient movements; and how those representations of patient movement affect the spread of a hypothetical infection between hospitals in the Victorian healthcare system.
 
@@ -29,7 +37,7 @@ The focus of this paper is on the patient movement network: ways of representing
 
 
 
-## Generating the temporal network
+## Generating the temporal network 
 We have line-listed patient movement data between {start_date} and {end_date}. This allows us to generate exact patient movement networks up to minute precision.
 By arranging patient journeys within this dataset, we can construct a network of patient transfers when two consecutive (but not necessarily temporally adjacent) admissions of the same patient occur at different healthcare facilities.
 We can model this data as a temporal network where a (single) patient being discharged from hospital $A$ at time $t_1$ and admitted to hospital $B$ at a later time $t_2$, given the patient is not admitted to any other hospital in the interim, contributes to a weight of 1 on the edge $(A, t_1) \to (B, t_2)$.
@@ -168,6 +176,11 @@ We remove self-loops from the static network; we attempt one model without self-
 
 A simplistic model of the effect of indirect transfer can be modelled with the following figures:
 
+<!-- I don't know why, but the first invocation of the dot engine craps out -->
+```{dot}
+```
+
+
 :::{#fig-model-going-home layout-ncol="2"}
 
 ```{dot}
@@ -199,4 +212,4 @@ $$k = {\lambda_0}^{-1} + \frac{1-p}{\lambda_2}$$
 
 i.e. the hitting time is increased by $\frac{1-p}{\lambda_2}$.
 
-In the full network, we can roughly 
+For a larger network, the number of possible paths causes complications for explicit computation of the effect, but we can always expect it to follow a similar principle, where splitting transfers into a direct path and a slower indirect path will add to the expected hitting time.
