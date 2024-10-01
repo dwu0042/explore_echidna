@@ -5,42 +5,66 @@ import multiprocessing
 from itertools import repeat
 
 class Summariser():
+    """Utility class to sumamrise metrics from an h5 database of simulation outputs"""
 
     def __init__(self, file):
         self.target_file = file
 
     @staticmethod
     def hitting_time(target : h5py.Group, null=np.nan, **kwargs):
+        """Yields list of hitting times to all locations"""
         mask = (target['history'][:] != 0)
         return list(np.where(mask.any(axis=1), mask.argmax(axis=1), null))
 
     @staticmethod
+    def extent(target: h5py.Group, time_limit=30, **kwargs):
+        """Yields the number of locations hit by the time limit"""
+        mask = (target['history'][:] != 0)
+        return (
+            sum(np.where(mask.any(axis=1), mask.argmax(axis=1), np.nan) < time_limit, -1),
+            time_limit,
+        )
+
+    @staticmethod
     def movement_out_total(target: h5py.Group, **kwargs):
+        """Yields the list of number of movements out of all locations"""
         return list(target['mover_out'][:].sum(axis=1))
-    
+
     @staticmethod
     def movement_in_total(target: h5py.Group, **kwargs):
+        """Yields the list of number of movements into all locations"""
         return list(target['mover_in'][:].sum(axis=1))
 
     @staticmethod
     def steady_state_infected(target: h5py.Group, **kwargs):
+        """Yields the mean and standard deviation of the number of infected individuals (over locs)"""
         init = target['history'][:,0].sum()
         normed = target['history'][:].sum(axis=0) / init
         return [np.mean(normed), np.std(normed)]
-    
+
     @staticmethod
     def emptying_time(target: h5py.Group, null=np.nan, **kwargs):
+        """Yields the first time that no location has any infected individuals"""
         xs = target['history'][:].sum(axis=0)
         mask = (xs == 0)
         return mask.argmax() if mask.any() else null
 
     @property
     def groups(self):
+        """The list of simulation keys (h5 groups)"""
         with h5py.File(self.target_file, 'r') as fp:
             grps = list(fp)
         return grps
 
-    def compute_metrics(self, target_str, no_move=False, verbose=False):
+    def compute_metrics(self, target_str, no_move=False, verbose=False, **kwargs):
+        """Computes (all) metrics on a target simulation given by the key target_str
+        
+        Args:
+            no_move: if True, does not return the movement metrics
+            verbose: if True, also prints the target string to stdout
+            **kwargs: keywords to pass into the metrics
+                all metrics must have a **kwargs to gracefully ignore extra kwargs
+        """
         if verbose:
             print(target_str)
 
@@ -54,6 +78,7 @@ class Summariser():
                 self.hitting_time,
                 self.steady_state_infected,
                 self.emptying_time,
+                self.extent,
             ]
             if not no_move:
                 metrics += [
@@ -62,23 +87,48 @@ class Summariser():
                 ]
 
             for metric in metrics:
-                    dx[metric.__name__] = metric(info, null=np.nan)
+                dx[metric.__name__] = metric(info, **kwargs)
 
             return dx
+ 
+    def _packed_compute_metrics(self, target_str, no_move=False, verbose=False, kwargs=None):
+        """helper function to pass kwargs to compute_metrics for paralllel starmapping"""
+        if kwargs is None:
+            kwargs = dict()
 
-    def collect(self, over=None, ncpus=4, no_move=False, verbose=False):
+        return self.compute_metrics(target_str, no_move=no_move, verbose=verbose, **kwargs)
+
+    def collect(self, over=None, ncpus=4, no_move=False, verbose=False, **kwargs):
+        """Collects metrics over the given subset of simulations
+        
+        Args:
+            over: groups/simulations to compute metrics over; if None, computes metrics over all groups
+            ncpus: number of workers to use in parallel
+            no_move: if True, does not compute movement metrics
+            verbose: if True, prints the group being computed to stdout
+            kwargs: arguments to pass to metrics
+        """
         if over is None:
             over = self.groups
 
         with multiprocessing.Pool(processes=ncpus) as pool:
-            results = pool.starmap(self.compute_metrics, zip(over, repeat(no_move), repeat(verbose)))
+            results = pool.starmap(
+                self._packed_compute_metrics,
+                zip(over, repeat(no_move), repeat(verbose), repeat(kwargs)),
+            )
 
         return results
-    
-    @staticmethod
-    def results_to_polars(results, drop=('movement_out_total', 'movement_in_total')):
 
-        df = pl.from_dicts(results).drop(*drop)
+    @staticmethod
+    def results_to_polars(results, drop=('movement_out_total', 'movement_in_total'), strict_drop=True):
+        """Forms the results from .collect into a polars dataframe.
+        
+        Args:
+            drop: iterable of keys to drop
+            strict_drop: if True, the keys to drop must exist, and an Exception is raised otherwise; 
+                does not check if False 
+        """
+        df = pl.from_dicts(results).drop(*drop, strict=strict_drop)
         return (
             df
             .with_columns(
@@ -87,12 +137,15 @@ class Summariser():
                 ),
                 pl.col('steady_state_infected').list.to_struct(
                     fields=['ssi_mean', 'ssi_std']
+                ),
+                pl.col('extent').list.to_struct(
+                    fields=['extent', 'extent_time']
                 )
             )
             .unnest(
                 'hitting_time',
                 'steady_state_infected',
+                'extent',
             )
             .fill_nan(None)
         )
-    
