@@ -17,7 +17,7 @@ csl: plos.csl
 
 # Key Points
 
-- There is a significant amount of patient movement in the Victorian hospital system where the patient returns home for a substative amount of time between discharge from one hospital and subsequent admission at another hospital.
+- There is a significant amount of patient movement in the Victorian hospital system where the patient returns home for a substantive amount of time between discharge from one hospital and subsequent admission at another hospital.
 - This "indirect" movement has implications on the rate of spread of a hypothetical contagion through the hospital system. It causes dispersal of patients to be slower than expected.
 - We can recover some of this behaviour by introducing an additional layer in the network to represent indirect movement.
 
@@ -26,30 +26,57 @@ csl: plos.csl
 
 Antimicrobial resistance poses a great threat to human health and development. [@murray_global_2022]
 Globally, it poses a large burden, operationally and economically, on hospital systems.
+In Australia, we see [significant] economic burden from AMR.
+this impact could become more significant if we had incursion and subsequent establishment of new [strains] of AMR. One X of interest is carbapenemase-producing enterobacteriacea (CPE). Australia has an endemic strain of CPE -- IMP4 -- but this is at a relatively low level. This already causes some level of burden, and introduced strains would further multiply this.
+
+Understanding of the spread of AMR through hospital systems has been studied in the past as a network phenomenon. The movement of patients through the hospital systems induced by referrals can be represented as edges between hospital nodes. However, these networks are usually presented as static, where movement over a large period of time has been aggregated to form a single network. Typically, this is due to the lack of granularity in the base dataset. It is known, especially in other applications, that temporal networks can display different behaviour than the static equivalents. In this paper, we investigate these differences using the Victorian hospital system as a baseline for comparison.
+
+
+# Methods
+
+## Setting and data sources
+
+<- yank from [@lydeamore_carbapenemase-producing_2024]
+
+Admissions data is from the Victorian Admitted Episdoes Dataset (VAED).
+
+Some exploratory analysis was done in by [@lydeamore_carbapenemase-producing_2024]
 
 
 
 
-Antimicrobial resistance is bad. In Victoria, Australia, we have observed CPE, and want to understand how the underlying movement of patients could affect the spread of CPE and other related AMR in the future.
-The focus of this paper is on the patient movement network: ways of representing, simplifying, and approximating those patient movements; and how those representations of patient movement affect the spread of a hypothetical infection between hospitals in the Victorian healthcare system.
+## Network Modelling
 
-# Network modelling of hospital patient movement
+A network or graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ is made up of nodes or vertices $\mathcal{V} = \{v_1, v_2, \dots\}$ and edges $\mathcal{E} = \{e_{ij} \coloneqq (v_i, v_j), \dots\}$ that join those nodes. Each edge $e_{ij}$ can be assigned attributes, including an edge weight $w_{ij}$.
+For our application, this edge weight will typically represent the number of observed movements in a given time period. Thus the network can encode a representation of the movement between hospitals over a given time period.
+
+We can use the network to construct a Markov chain, where the expected rate of movement is governed by the observed movement in the data. For some edge $e_{ij}$ with a number of observed movements $w_{ij}$ over some time period $\tau$, the rate of movement along that edge $\lambda_{ij} = w_{ij} / \tau$, such that the time between movement events along that edge are exponentially distributed $\text{Exp}(\lambda_{ij})$.
+
+[Stuff about previous implementations of this idea]
 
 
 
-## Generating the temporal network 
+## Explicitly Temporal Models
+Previous analyses of movement and spread of contagions through these networks have made the assumption that the weight $w_{ij}$ for a given edge does not change over time, i.e. the network is static.
+One advantage that the VAED provide us is the minute-scale granularity of patient admissions, which allows us to construct temporal networks and models of patient movement.
+
+<- Description of temporal networks and models>
+
+<- Description of temporally reductive networks and models>
+
+
+<!-- 
 We have line-listed patient movement data between {start_date} and {end_date}. This allows us to generate exact patient movement networks up to minute precision.
 By arranging patient journeys within this dataset, we can construct a network of patient transfers when two consecutive (but not necessarily temporally adjacent) admissions of the same patient occur at different healthcare facilities.
 We can model this data as a temporal network where a (single) patient being discharged from hospital $A$ at time $t_1$ and admitted to hospital $B$ at a later time $t_2$, given the patient is not admitted to any other hospital in the interim, contributes to a weight of 1 on the edge $(A, t_1) \to (B, t_2)$.
-To reduce the computational expense of such a network, and to protect patient anonymity, we aggregate these patient transfer events to a discrete set of times. By choosing some window size $W$, we treat events that occur in the time interval $[t_i, t_i+W)$ as all occuring at $t_i$.
-This aggregation classfies patient transfers into two classes. 
+To reduce the computational expense of such a network, and to protect patient anonymity, we aggregate these patient transfer events to a discrete set of times. By choosing some window size $W$, we treat events that occur in the time interval $[t_i, t_i+W)$ as all occurring at $t_i$.
+This aggregation classifies patient transfers into two classes. 
 Transfers can be "direct", where the discharge and subsequent admission both occur within the same time window $[t_i, t_i+W)$. Alternatively they can be "indirect", where the patient is not present in the hospital system for some amount of time between discharge and admission, i.e. when $t_2 \neq t_1$. From inspecting the dataset, we see that there is a significant number of transfers that are indirect, and the time between consecutive admissions is distributed sub-exponentially, with a heavy tail.
-These types of transfers imply causal edges between hospitals that are neither synchronous (occur at the same time), nor persistent (where the effect of a cause at time $t_1$ is not felt over some interval $(t_1, t_2)$), which make it challenging to fit a temporal network generated by this dataset into classical temporal network frameworks of representation.
+These types of transfers imply causal edges between hospitals that are neither synchronous (occur at the same time), nor persistent (where the effect of a cause at time $t_1$ is not felt over some interval $(t_1, t_2)$), which make it challenging to fit a temporal network generated by this dataset into classical temporal network frameworks of representation. -->
 
 
 
-## Simulating on Networks
-
+<!-- 
 We use a discrete time Markov chain model to simulate the spread of infection. Simulations step forward in timesteps of $\delta t$, and events within the window $\delta t$ are assumed to be independent.
 For simplicity, we model the infection as SI or SIS, depending on the choice of removal rate; we assume that all facilities are at capacity all the time, which allows us to remove the explciit tracking of susceptibles.
 When individuals are removed, they are randomly chosen to either never return or eventually return (to the hospital system); if they do, they are randomly placed into a transfer bucket which has two properties:
@@ -67,18 +94,14 @@ We use a "full" temporal simulation with the unprojected temporal network, and a
 | $\beta$   | Rate of infection per unit infected per day |
 | $\eta$    | Rate of removal/recovery |
 | $\gamma$  | Rate of discharge from hospital |
-| $M$       | Transition matrix inferred from network |
+| $M$       | Transition matrix inferred from network | -->
 
 # Results
 
-We run a range of experiments.
+We simulate the movement of individuals 
 
-## Leading results
-
-
-## No infection simulations 
-
-To isolate the effect of the projections on the movement of patients, we can simulate the model with parmeters $\beta = 0, \eta=0$.
+<!-- 
+To isolate the effect of the projections on the movement of patients, we can simulate the model with parmeters $\beta = 0, \eta=0$. -->
 
 
 # Appendix
