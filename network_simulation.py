@@ -1,10 +1,9 @@
 """this is a base refactor of on_network_simulation"""
 
-from ast import comprehension
 from typing import Sequence, Mapping
 import numpy as np
 from util import BlackHole
-from numba_sample import multinomial_sparse_full, truncated_poisson
+from numba_sample import multinomial_sparse_full, truncated_poisson, multinomial_sample_sparse_collapsed
 import h5py
 
 
@@ -100,7 +99,7 @@ class Simulation:
 
 
 class SimulationWithMovers(Simulation):
-    def __init__(self, track_movement=False, *args, **kwargs):
+    def __init__(self, *args, track_movement=False, **kwargs):
         super().__init__(*args, **kwargs)
 
         if track_movement:
@@ -136,14 +135,14 @@ class SnapshotWithHome(SimulationWithMovers):
         full_size: Sequence[int],
         parameters: Mapping,
         timings: Sequence,
-        dt=1.0,
         track_movement=False,
+        dt=1.0,
     ):
         super().__init__(
             full_size=full_size,
             parameters=parameters,
-            dt=dt,
             track_movement=track_movement,
+            dt=dt,
         )
 
         self.current_index = 0
@@ -267,3 +266,107 @@ class StaticWithHome(SimulationWithMovers):
         self.shadow_state = X - indirect_returns_raw + indirect_move_to
 
         return I_new
+    
+
+class TemporalSim(SimulationWithMovers):
+    
+    def __init__(
+            self, 
+            full_size: Sequence[int],
+            parameters: Mapping, 
+            num_times: int,
+            discretisation_size: float,
+            track_movement=False,
+            dt=1.0,
+    ):
+        super().__init__(
+            full_size=full_size,
+            parameters=parameters,
+            track_movement=track_movement,
+            dt=dt,
+        )
+
+        self.NT = num_times
+        self.H = discretisation_size
+
+        self.time_travellers = np.zeros(
+            (self.NHOSP, self.NT),
+            dtype=np.int64,
+        )
+
+    def step(self):
+
+        beta = self.parameters['beta']
+        gamma = self.parameters['gamma']
+        prob_final = self.parameters['prob_final_stay']
+        txn_mat = self.parameters['transition_matrix']
+
+        # determine position in time
+        t = self.ts[-1]
+        # jitter here for machine eps
+        tidx = int(t / self.H + 1e-8)
+        XTHIS = tidx * self.NHOSP
+        XNEXT = (tidx + 1) * self.NHOSP
+
+        # re-introduce previously seen patients that were at home
+        travellers = self.time_travellers[: ,tidx:tidx+1]
+        next_time_boundary = (tidx + 1) * self.H
+        remaining_time = next_time_boundary - t
+        rel_time = np.clip(self.dt / remaining_time, 0, 1)
+        movers = self.rng.binomial(travellers.astype(np.int64), rel_time)
+        movers = np.clip(movers, 0, travellers)
+        self.time_travellers[:, tidx : tidx + 1] = travellers - movers
+        new_state = np.clip(self.state + movers, 0, self.N)
+        self.mover_in.append(new_state - self.state)
+
+        # perform mass-action infection dynamics
+        I = self.state
+        n_inf = self.rng.poisson(beta * (self.N - I) * I / self.N * self.dt).astype("int64")
+        n_out = self.rng.poisson(gamma[:, tidx : tidx + 1] * I * self.dt)
+        # truncated poisson: cannot have more people leave than are present
+        n_out = np.clip(n_out, 0, I).astype("int64")
+        new_state += n_inf - n_out
+
+        # lose individuals that never return
+        n_removed = self.rng.binomial(n_out, prob_final)
+        n_retained = n_out - n_removed
+        self.mover_out.append(n_retained)
+
+        # determine when and where patients reappear
+        n_out_collapsed = multinomial_sample_sparse_collapsed(n_retained.flatten(), txn_mat)
+        
+        # move direct transfers
+        direct_transfers = n_out_collapsed[:self.NHOSP]
+        new_state += direct_transfers.reshape(*new_state.shape)
+
+        # store indirect transfers
+        indirect_transfers = n_out_collapsed[self.NHOSP:]
+        indirect_movers_influx = indirect_transfers.reshape((self.NHOSP, -1), order="F")
+        self.time_travellers[:, tidx + 1 :] += indirect_movers_influx
+
+        # truncate state to location capacity
+        new_state = np.clip(new_state, 0, self.N)
+
+        return new_state
+
+    def seed(self, n_seed_events=1, n_seed_number=1, unique_locations=False, strict_validity=True, rng_seed=None):
+        self.rng = np.random.default_rng(rng_seed)
+
+        if strict_validity:
+            valid_hospitals = list(set(self.parameters['transition_matrix'][:self.NHOSP, :].nonzero()[0]))
+        else:
+            valid_hospitals = list(range(self.NHOSP))
+
+        for hospital in self.rng.choice(valid_hospitals, n_seed_events, replace=not(unique_locations)):
+            self.state[hospital, 0] += n_seed_number
+        
+        self.state = np.clip(self.state, 0, self.N)
+
+    def reset(self, soft=True):
+        super().reset(soft=soft)
+
+        self.time_travellers = np.zeros_like(self.time_travellers, dtype=np.int64)
+
+    def delay(self, n: int):
+
+        raise NotImplementedError("old code uses a different state setup, which makes this tricky to port")

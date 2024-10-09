@@ -7,7 +7,7 @@ def create_snaphome_parameter_converter(ordering_file, snapshots_directory):
 
     ordering = netcon.Ordering.from_file(ordering_file)
 
-    converter = netcon.SnapshotWithHomeConverter.from_directory(snapshots_directory, ordering=ordering)
+    converter = netcon.SnapshotWithHomeConverter.from_directory(snapshots_directory, ordering=ordering, infer_durations=True)
 
     return converter
 
@@ -34,10 +34,16 @@ def init_zero_params(converter, prob_final_file):
         'prob_final_stay': pf_zero,
     })
 
-def create_sim(converter: netcon.SnapshotWithHomeConverter, parameters, seeds=1, numinf_perseed=1, dt=1.0, track_movement=False):
+def create_sim(converter: netcon.SnapshotWithHomeConverter, parameters, seeds=1, numinf_perseed=1, dt=1.0, track_movement=False, pseudo_capacity=False):
+
+    if pseudo_capacity:
+        # fake the size of the hospitals
+        full_sizes = 100_000 * np.ones_like(converter.ordering.sizes, dtype=int)
+    else:
+        full_sizes = converter.ordering.sizes
 
     sim = netsim.SnapshotWithHome(
-        full_size=converter.ordering.sizes,
+        full_size=full_sizes,
         parameters=parameters,
         timings=converter.snapshot_times,
         dt=dt,
@@ -75,7 +81,7 @@ if __name__ == "__main__":
     )
 
     sim = create_sim(
-        conv, parameters=params, seeds=0, numinf_perseed=0, track_movement=True,
+        conv, parameters=params, seeds=0, numinf_perseed=0, track_movement=True, pseudo_capacity=True
     )
 
     REPEATS = 20
@@ -83,13 +89,13 @@ if __name__ == "__main__":
         for i, v in enumerate(conv.ordering.sizes):
             print(i, v, sep=',', end=' ', flush=True)
 
-            sim.reset(soft=False)
+            sim.reset(soft=False) # non-soft reset sets all state to zero
 
-            sim.state[i] = v
+            sim.state[i] = 30
 
             now = datetime.datetime.now()
             simdate = now.strftime('%y%m%d')
             simtime = now.strftime('%H%M%S')
             simid = int(simdate + simtime)
-            outname = f"zero_sims/snapshot/sim_all_nodirectselfloop.h5"
+            outname = f"zero_sims/snapshot/sims_with_30seeds_pseudocap.h5"
             simulate_sim_and_record(sim, simid=simid, until=8*365, nostop=True, outfile=outname, with_movers=True, simdate=simdate, simtime=simtime, seed=i)

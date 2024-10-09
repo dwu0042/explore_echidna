@@ -321,7 +321,7 @@ class TemporalNetworkSimulation(Simulation):
         NIDX = int(n * NLOC)
 
         self.DIMENSIONS["NT"] -= n
-        self.state = self.state[NIDX:]
+        self.state = self.state[NIDX:] #?????
         self.time_travellers = self.time_travellers[:, n:]
         self.removal_rate = self.removal_rate[:, n:]
         self.PP = self.PP[NIDX:, NIDX:]

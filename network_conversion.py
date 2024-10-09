@@ -9,6 +9,8 @@ import igraph as ig
 from typing import Mapping, Hashable, Sequence, Any, SupportsFloat as Numeric, Iterable
 from functools import lru_cache
 from pathlib import Path
+
+import graph_importer as gim
 from util import Iden, nparr_find, NotFound, SupportsGet
 import examine_transfers_for_sizes as esz
 
@@ -51,6 +53,16 @@ class Ordering:
         """returns the size of the object"""
         idx = self[key]
         return self.sizes[idx]
+    
+    def todf(self):
+        """Return the dataframe that corresponds to the ordering
+        Has columns 'hospital', 'index', and 'size'
+        """
+        return pl.from_dict({
+            'hospital': self.order,
+            'index': np.arange(len(self.order)),
+            'size': self.sizes
+        })
 
 
 class ColumnDict(dict):
@@ -70,86 +82,6 @@ class ColumnDict(dict):
 
     def organise_by(self, ordering: Ordering):
         return ordering.conform(self)
-
-
-class Converter(abc.ABC):
-    @abc.abstractmethod
-    def __init__(self, network: ig.Graph, ordering: Ordering):
-        pass
-
-    @abc.abstractmethod
-    def map_parameters(self, parameters: Mapping):
-        pass
-
-
-class TemporalNetworkConverter(Converter):
-    def __init__(
-        self, network: ig.Graph, ordering: Ordering, weight: str | None = None
-    ):
-        """Extracts transition matrix from a network"""
-
-        times = {k: i for i, k in enumerate(sorted(network.vs["time"]))}
-        NT = len(times)
-        times_by_order = sorted(times.keys())
-        DT = times_by_order[1] - times_by_order[0]  # assumes regular time grid
-        locs = {k: i for i, k in enumerate(ordering)}
-        NLOC = len(locs)
-
-        txn_matrix_data, txn_matrix_i, txn_matrix_j = [], [], []
-
-        # structure is blocks where we have all locs at time 0, then all locs at time 1 etc
-        for node in network.vs:
-            nd_idx = NLOC * times[node["time"]] + locs[node["loc"]]
-
-            for edge in node.out_edges():
-                if edge.target == node.index:
-                    continue
-                else:
-                    other = network.vs[edge.target]
-                    target_idx = NLOC * times[other["time"]] + locs[other["loc"]]
-                    out_num = edge[weight] / ordering.sizes[locs[node["loc"]]] / DT
-                    txn_matrix_data.append(out_num)
-                    txn_matrix_i.append(nd_idx)
-                    txn_matrix_j.append(target_idx)
-
-        transition_matrix = sparse.coo_array(
-            (txn_matrix_data, (txn_matrix_i, txn_matrix_j)),
-            shape=(NLOC * NT, NLOC * NT),
-        )
-
-        self.A = transition_matrix.tocsr()
-        self.DT = DT
-        self.NLOC = NLOC
-        self.NT = NT
-
-        raise NotImplemented
-
-    @property
-    def DIMENSIONS(self):
-        return {"NLOC": self.NLOC, "NT": self.NT}
-
-    def map_parameters(self, parameters):
-        """converts parameters based on the internal transition matrix"""
-        # the required parameters?
-        # prob_final_stay -> removal rates
-        # beta [transmission] -> remains unchanged
-
-        mapped_parameters = dict()
-
-        mapped_parameters["beta"] = parameters["beta"]
-        mapped_parameters["prob_final_stay"] = parameters["prob_final_stay"]
-
-        movements_out = self.A.sum(axis=1)
-        M_mat = movements_out.reshape((self.NLOC, self.NT), order="F")
-        p = parameters["prob_final_stay"].reshape((-1, 1))
-        # here we use that M_mat = gamma * (1-p)
-        mapped_parameters["gamma"] = M_mat / (1 - p)
-
-        mapped_parameters["transition_matrix"] = (
-            self.A / movements_out[:, np.newaxis]
-        ).tocsr()
-
-        return mapped_parameters
 
 
 def transition_matrix_from_graph(
@@ -190,6 +122,89 @@ def transition_matrix_from_graph(
     return transition_matrix
 
 
+class Converter(abc.ABC):
+    @abc.abstractmethod
+    def __init__(self, network: ig.Graph, ordering: Ordering):
+        pass
+
+    @abc.abstractmethod
+    def map_parameters(self, parameters: Mapping):
+        pass
+
+
+class TemporalNetworkConverter(Converter):
+    def __init__(
+        self, network: ig.Graph, ordering: Ordering, weight: str='weight',
+    ):
+        """Extracts transition matrix from a network"""
+
+        times = {k: i for i, k in enumerate(sorted(set(network.vs["time"])))}
+        NT = len(times)
+        times_by_order = sorted(times.keys())
+        DT = times_by_order[1] - times_by_order[0]  # assumes regular time grid
+        locs = {k: i for i, k in enumerate(ordering)}
+        NLOC = len(locs)
+
+        txn_matrix_data, txn_matrix_i, txn_matrix_j = [], [], []
+
+        # structure is blocks where we have all locs at time 0, then all locs at time 1 etc
+        for node in network.vs:
+            nd_idx = NLOC * times[node["time"]] + locs[node["loc"]]
+
+            for edge in node.out_edges():
+                if edge.target == node.index:
+                    continue
+                else:
+                    other = network.vs[edge.target]
+                    target_idx = NLOC * times[other["time"]] + locs[other["loc"]]
+                    out_num = edge[weight] / ordering.sizes[locs[node["loc"]]] / DT
+                    txn_matrix_data.append(out_num)
+                    txn_matrix_i.append(nd_idx)
+                    txn_matrix_j.append(target_idx)
+
+        transition_matrix = sparse.coo_array(
+            (txn_matrix_data, (txn_matrix_i, txn_matrix_j)),
+            shape=(NLOC * NT, NLOC * NT),
+        )
+
+        self.A = transition_matrix.tocsr()
+        self.DT = DT
+        self.NLOC = NLOC
+        self.NT = NT
+
+    @property
+    def DIMENSIONS(self):
+        return {"NLOC": self.NLOC, "NT": self.NT}
+    
+    @classmethod
+    def from_file(cls, network_filepath: str|PathLike, **kwargs):
+        graph = gim.make_graph(network_filepath)
+        return cls(network=graph, **kwargs)
+
+    def map_parameters(self, parameters):
+        """converts parameters based on the internal transition matrix"""
+        # the required parameters?
+        # prob_final_stay -> removal rates
+        # beta [transmission] -> remains unchanged
+
+        mapped_parameters = dict()
+
+        mapped_parameters["beta"] = parameters["beta"]
+        mapped_parameters["prob_final_stay"] = parameters["prob_final_stay"]
+
+        movements_out = self.A.sum(axis=1)
+        M_mat = movements_out.reshape((self.NLOC, self.NT), order="F")
+        p = parameters["prob_final_stay"].reshape((-1, 1))
+        # here we use that M_mat = gamma * (1-p)
+        mapped_parameters["gamma"] = M_mat / (1 - p)
+
+        mapped_parameters["transition_matrix"] = (
+            self.A / movements_out[:, np.newaxis]
+        ).tocsr()
+
+        return mapped_parameters
+
+
 class SnapshotWithHomeConverter(Converter):
     ADJTYPES = ("direct", "out", "in")
     ADJMAP = {
@@ -217,7 +232,7 @@ class SnapshotWithHomeConverter(Converter):
 
         # infer the duration scaling for each snapshot
         if infer_durations:
-            self.snapshot_durations = [base_duration_map[k] for k in self.snapshot_times]
+            self.snapshot_durations = [base_duration_map.get(k, 1) for k in self.snapshot_times]
         else:
             self.snapshot_durations = [network_snapshots[k]['duration'] for k in self.snapshot_times]
         
@@ -444,3 +459,7 @@ class StaticConverter(Converter):
         mapped_parameters["transition_matrix_in"] = self.inwards_weighting_matrix
 
         return mapped_parameters
+
+
+# class NaiveStaticConverter(Converter):
+    
