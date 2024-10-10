@@ -142,7 +142,15 @@ class Summariser():
             strict_drop: if True, the keys to drop must exist, and an Exception is raised otherwise; 
                 does not check if False 
         """
-        df = pl.from_dicts(results).drop(*drop, strict=strict_drop)
+        metric_schema_overrides = {
+            'hitting_time': pl.List(pl.Float64),
+            'steady_state_infected': pl.List(pl.Float64),
+            'emptying_time': pl.Float64,
+            'movement_out_total': pl.List(pl.Float64),
+            'movement_in_total': pl.List(pl.Float64),
+        }
+
+        df = pl.from_dicts(results, schema_overrides=metric_schema_overrides).drop(*drop, strict=strict_drop)
         return (
             df
             .with_columns(
