@@ -137,6 +137,7 @@ class TemporalNetworkConverter(Converter):
         self, network: ig.Graph, ordering: Ordering, weight: str='weight',
     ):
         """Extracts transition matrix from a network"""
+        self.ordering = ordering
 
         times = {k: i for i, k in enumerate(sorted(set(network.vs["time"])))}
         NT = len(times)
@@ -190,13 +191,12 @@ class TemporalNetworkConverter(Converter):
         mapped_parameters = dict()
 
         mapped_parameters["beta"] = parameters["beta"]
-        mapped_parameters["prob_final_stay"] = parameters["prob_final_stay"]
+        mapped_parameters["prob_final_stay"] = parameters["prob_final_stay"].reshape((-1, 1))
 
         movements_out = self.A.sum(axis=1)
         M_mat = movements_out.reshape((self.NLOC, self.NT), order="F")
-        p = parameters["prob_final_stay"].reshape((-1, 1))
         # here we use that M_mat = gamma * (1-p)
-        mapped_parameters["gamma"] = M_mat / (1 - p)
+        mapped_parameters["gamma"] = M_mat / (1 - mapped_parameters["prob_final_stay"])
 
         mapped_parameters["transition_matrix"] = (
             self.A / movements_out[:, np.newaxis]

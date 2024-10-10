@@ -333,7 +333,8 @@ class TemporalSim(SimulationWithMovers):
         self.mover_out.append(n_retained)
 
         # determine when and where patients reappear
-        n_out_collapsed = multinomial_sample_sparse_collapsed(n_retained.flatten(), txn_mat)
+        M = txn_mat[XTHIS:XNEXT, XTHIS:]
+        n_out_collapsed = multinomial_sample_sparse_collapsed(n_retained.flatten(), M)
         
         # move direct transfers
         direct_transfers = n_out_collapsed[:self.NHOSP]
