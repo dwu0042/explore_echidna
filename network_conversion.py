@@ -128,7 +128,7 @@ class Converter(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def map_parameters(self, parameters: Mapping):
+    def map_parameters(self, parameters: Mapping) -> Mapping:
         pass
 
 
@@ -461,5 +461,49 @@ class StaticConverter(Converter):
         return mapped_parameters
 
 
-# class NaiveStaticConverter(Converter):
-    
+class NaiveStaticConverter(Converter):
+
+    def __init__(
+        self, network: ig.Graph, ordering: Ordering, time_span: Numeric | None=None
+    ):
+        self.ordering = ordering
+
+        if time_span is not None:
+            self.time_span = time_span
+        elif "time_span" in network.attributes():
+            self.time_span = network["time_span"]
+        else:
+            raise ValueError("No time span provided")
+        
+        self.transition_matrix =  transition_matrix_from_graph(
+            graph=network,
+            ordering=self.ordering,
+            scaling_per_node=self.ordering.sizes,
+            global_scaling=self.time_span,
+            ordering_key="name",
+            adjacency_attribute="weight",
+            matrix_size=len(self.ordering.order),
+        )
+
+    @classmethod
+    def from_file(
+        cls, file: PathLike, ordering: Ordering, *args, **kwargs
+    ):
+        network = ig.Graph.Read(file)
+        return cls(network, ordering, *args, **kwargs)
+
+    def map_parameters(self, parameters: Mapping) -> Mapping[str, Any]:
+        mapped_parameters = dict()
+
+        mapped_parameters["beta"] = parameters["beta"]
+
+        p = np.asanyarray(parameters["prob_final_stay"]).reshape((-1, 1))
+        mapped_parameters["prob_final_stay"] = p
+
+        observed_departure_rate = self.transition_matrix.sum(axis=1).reshape((-1, 1))
+        mapped_parameters["gamma"] = observed_departure_rate / (1 - p)
+
+        mapped_parameters["transition_matrix"] = self.transition_matrix
+
+        return mapped_parameters
+
