@@ -2,8 +2,9 @@ import h5py
 import polars as pl
 import numpy as np
 import multiprocessing
-from itertools import repeat
+from itertools import repeat, permutations
 from functools import wraps
+from scipy import stats
 
 class Summariser():
     """Utility class to sumamrise metrics from an h5 database of simulation outputs"""
@@ -190,3 +191,40 @@ class Metrics(pl.DataFrame):
             .alias('extent'),
             pl.lit(extent_time).alias('extent_time')
         )
+
+
+def hitting_time_comparison(df_left, df_right, maxv=8*365+1):
+
+    test_results = []
+
+    seeds = df_left.select(pl.col('seed').unique()).to_series().to_list()
+    path_pairs = permutations(seeds, 2)
+    for path_pair in path_pairs:
+        seed_id, target_id = path_pair
+        samples = [
+            df.filter(pl.col('seed') == seed_id)
+            .select(pl.col(f"hitting_time_{target_id}"))
+            .to_series().to_numpy()
+
+            for df in (df_left, df_right)
+        ]
+
+        censored_samples = [
+            stats.CensoredData(
+                uncensored=sample[np.isfinite(sample)],
+                right=np.ones_like(sample[np.isnan(sample)])*maxv
+            )
+            for sample in samples
+        ]
+
+        raw_result = stats.logrank(*censored_samples, alternative='two-sided')
+        test_results.append({
+            'seed': seed_id,
+            'target': target_id,
+            'pvalue': raw_result.pvalue,
+            'statistic': raw_result.statistic,
+        })
+
+    result_df = pl.from_dicts(test_results)
+
+    return result_df
