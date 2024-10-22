@@ -26,7 +26,7 @@ class Simulation:
 
     def export_history(self, to, identity, **kwargs):
         with h5py.File(to, mode="a") as h5f:
-            g = h5f.create_group(identity)
+            g = h5f.create_group(str(identity))
             g.create_dataset("ts", data=self.ts, compression="gzip")
             g.create_dataset("history", data=self.history, compression="gzip")
             g.attrs.update(kwargs)
@@ -60,7 +60,7 @@ class Simulation:
         beta = self.parameters["beta"]
         gamma = self.parameters["gamma"]
         pstay = self.parameters["prob_final_stay"]
-        WW = self.parameters["weighting_matrix"]
+        WW = self.parameters["transition_matrix"]
 
         I = self.state
 
@@ -79,10 +79,12 @@ class Simulation:
         # first, draw how many stay
         n_mov = self.rng.binomial(n_rec, 1 - pstay)
         # second, draw where they go
-        M_mov_I = self.rng.multinomial(n_mov, WW)
+        # .flatten for broadcasting of the multinomial function numpy >1.22
+        M_mov_I = self.rng.multinomial(n_mov.flatten(), WW)
         n_mov_I = M_mov_I.sum(axis=0)
 
-        I_new += n_mov_I
+        # reshape here since n_mov_I is 1D and will be implicitly broadcast
+        I_new += n_mov_I.reshape(I_new.shape)
 
         return I_new
 
