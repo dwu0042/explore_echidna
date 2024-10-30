@@ -133,27 +133,6 @@ Movemnts $z_{ij}$ are distriuted as Uniform(0, W)
 
 
 
-.....
-
-
-For the naïve and improved static network models, we can compute the hitting times directly and compare them.
-We can model the dyanmics on these networks as a (continuous time) Markov Chain and extract the mean hitting time to any target hospital from all other hospitals by solving a linear system.
-For the naïve static network, this is relatively straightforward, as we can simply model the rate of movement from hospital $i$ to hospital $j$ as the mean number of observed movements over the observation period (XXX days).
-For the improved static network, we expand the state by including an additional state for each pair of hospitals, so that the residence time at home (between hospital admissions) for indirect transfers can be modelled. Then as with the naïve model, the movement from $i$ to $j$ directly is the mean observed number of transfers over the observation epriod. The indirect movements from $i$ to the intermediate $i,j$ state are derived from the observed number of movements, and the rate from $i,j$ to $j$ is derived from the mean readmission period (as seed in @fig-readmission-window).
-
-Comparing the relative difference in the mean hitting times gives us @fig-hitting-time-difference
-
-```{python}
-#| label: fig-hitting-time-difference
-#| fig-cap: Relative difference between the expected hitting times for the naïve static and improved static models
-
-# temp hack
-# todo port across computation code
-from PIL import Image
-image = Image.open("./precompiled/zrelative_change_hitting_time_home.png")
-image
-```
-
 <!-- 
 We have line-listed patient movement data between {start_date} and {end_date}. This allows us to generate exact patient movement networks up to minute precision.
 By arranging patient journeys within this dataset, we can construct a network of patient transfers when two consecutive (but not necessarily temporally adjacent) admissions of the same patient occur at different healthcare facilities.
@@ -187,6 +166,64 @@ We use a "full" temporal simulation with the unprojected temporal network, and a
 
 # Results
 
+
+## A Reduced Model
+
+For the naïve and improved static network models, we can compute the hitting times directly and compare them.
+We can model the dyanmics on these networks as a (continuous time) Markov Chain and extract the mean hitting time to any target hospital from all other hospitals. 
+
+A simplistic model of the effect of indirect transfer can be modelled with the following figures:
+
+:::{#fig-model-going-home layout-ncol="2"}
+
+```{dot}
+//| fig-width: 50%
+digraph G {
+    S₀ -> S₁ [ label="λ₀" ]
+}
+```
+
+```{dot}
+//| fig-width: 50%
+digraph G {
+    S₀ -> S₁ [ label="λ₀p" ]
+    S₀ -> S₂ [ label="λ₀(1-p)" ]
+    S₂ -> S₁ [ label="λ₂" ]
+}
+```
+
+Toy model of the effect of indirect transfer on hitting time
+:::
+
+In the model without indirect transfer, we can compute the expected hitting time $k$ from $S_0$ to $S_1$
+
+$$k = {\lambda_0}^{-1}$$
+
+In a model with indirect transfer, we introduce an additional state $S_2$ which represents the indirect pathway. If the probability of direct transfer is $p$ given that an individual will move out of $S_0$, and the average indirect transfer period is $T = \lambda_2^{-1}$, the we can compute the hitting time $k$ of $S_1$ given we start at $S_0$:
+
+$$k = {\lambda_0}^{-1} + \frac{1-p}{\lambda_2}$$
+
+i.e. the hitting time is increased by $\frac{1-p}{\lambda_2}$.
+
+For a larger network, the number of possible paths causes complications for explicit computation of the effect, but we can always expect it to follow a similar principle, where splitting transfers into a direct path and a slower indirect path will add to the expected hitting time. These can be obtained by solving a linear system @Norris_Markov_Chains_1997.
+For the naïve static network, we can model the rate of movement from hospital $i$ to hospital $j$ as the mean number of observed movements over the observation period (XXX days).
+For the improved static network, we expand the state by including an additional state for each pair of hospitals, so that the residence time at home (between hospital admissions) for indirect transfers can be modelled. Then as with the naïve model, the movement from $i$ to $j$ directly is the mean observed number of transfers over the observation epriod. The indirect movements from $i$ to the intermediate $i,j$ state are derived from the observed number of movements, and the rate from $i,j$ to $j$ is derived from the mean readmission period (as seed in @fig-readmission-window).
+
+Comparing the relative difference in the mean hitting times gives us @fig-hitting-time-difference
+
+```{python}
+#| label: fig-hitting-time-difference
+#| fig-cap: Relative difference between the expected hitting times for the naïve static and improved static models
+
+# temp hack
+# todo port across computation code
+from PIL import Image
+image = Image.open("./precompiled/zrelative_change_hitting_time_home.png")
+image
+```
+
+
+## Movement Simulation Studies
 
 <!-- 
 To isolate the effect of the projections on the movement of patients, we can simulate the model with parmeters $\beta = 0, \eta=0$. -->
@@ -385,45 +422,3 @@ In order to capture patients leaving and then subsequently returning to hospital
 This is implicitly captured in the network data structure by setting two additional edge attributes that represent the amount of flow on each of the two new secondary layer edges respectively.
 
 We remove self-loops from the static network; we attempt one model without self-loops in only the direct layer (since this does not make physical sense), and another without self-loops in both the direct layer, and the indirect layer (we uspected that these self-loops slowed the movement of individuals down, but the resulting effect is the explosion of movement in the first simulation step)
-
-## Quantifying the effect of including indirect transfers
-
-A simplistic model of the effect of indirect transfer can be modelled with the following figures:
-
-<!-- I don't know why, but the first invocation of the dot engine craps out -->
-```{dot}
-```
-
-
-:::{#fig-model-going-home layout-ncol="2"}
-
-```{dot}
-//| fig-width: 50%
-digraph G {
-    S₀ -> S₁ [ label="λ₀" ]
-}
-```
-
-```{dot}
-//| fig-width: 50%
-digraph G {
-    S₀ -> S₁ [ label="λ₀p" ]
-    S₀ -> S₂ [ label="λ₀(1-p)" ]
-    S₂ -> S₁ [ label="λ₂" ]
-}
-```
-
-Toy model of the effect of indirect transfer on hitting time
-:::
-
-In the model without indirect transfer, we can compute the expected hitting time $k$ from $S_0$ to $S_1$
-
-$$k = {\lambda_0}^{-1}$$
-
-In a model with indirect transfer, we introduce an additional state $S_2$ which represents the indirect pathway. If the probability of direct transfer is $p$ given that an individual will move out of $S_0$, and the average indirect transfer period is $T = \lambda_2^{-1}$, the we can compute the hitting time $k$ of $S_1$ given we start at $S_0$:
-
-$$k = {\lambda_0}^{-1} + \frac{1-p}{\lambda_2}$$
-
-i.e. the hitting time is increased by $\frac{1-p}{\lambda_2}$.
-
-For a larger network, the number of possible paths causes complications for explicit computation of the effect, but we can always expect it to follow a similar principle, where splitting transfers into a direct path and a slower indirect path will add to the expected hitting time.
