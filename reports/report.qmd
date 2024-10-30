@@ -13,7 +13,33 @@ format:
     pdf: default
 bibliography: refs.bib
 csl: plos.csl
+jupyter: python3
+filters:
+    - diagram
+execute:
+    echo: false
+    warning: false
+    error: false
 ---
+
+```{python}
+import numpy as np
+import polars as pl
+from matplotlib import pyplot as plt
+import seaborn as sns
+import itertools
+import re
+
+from pathlib import Path
+
+# setup printing formats for tables
+pl.Config.set_tbl_hide_column_data_types(True)
+pl.Config.set_tbl_hide_dataframe_shape(True)
+
+sns.set_theme(style='ticks')
+sns.set_context('paper')
+# plt.style.use('ggplot')
+```
 
 # Key Points
 
@@ -29,7 +55,7 @@ Globally, it poses a large burden, operationally and economically, on hospital s
 In Australia, we see [significant] economic burden from AMR.
 this impact could become more significant if we had incursion and subsequent establishment of new [strains] of AMR. One X of interest is carbapenemase-producing enterobacteriacea (CPE). Australia has an endemic strain of CPE -- IMP4 -- but this is at a relatively low level. This already causes some level of burden, and introduced strains would further multiply this.
 
-Understanding of the spread of AMR through hospital systems has been studied in the past as a network phenomenon. The movement of patients through the hospital systems induced by referrals can be represented as edges between hospital nodes. However, these networks are usually presented as static, where movement over a large period of time has been aggregated to form a single network. Typically, this is due to the lack of granularity in the base dataset. It is known, especially in other applications, that temporal networks can display different behaviour than the static equivalents. In this paper, we investigate these differences using the Victorian hospital system as a baseline for comparison.
+Understanding of the spread of AMR through hospital systems has been studied in the past as a network phenomenon. The movement of patients through the hospital systems induced by referrals can be represented as edges between hospital nodes. However, these networks are usually presented as static, where movement over a large period of time has been aggregated to form a single network. It is known, especially in other applications, that temporal networks can display different behaviour than the static equivalents. In this paper, we investigate these differences using the Victorian hospital system as a baseline for comparison. In particular, we investigate the impacts of the inclusion of modelling the period of time that patients spend at home between admissions, and the effect of approximating the granularity of the temporality]]]]].
 
 
 # Methods
@@ -45,7 +71,7 @@ Some exploratory analysis was done in by [@lydeamore_carbapenemase-producing_202
 
 
 
-## Network Modelling
+## Network Modelling {#sec-network-modelling}
 
 A network or graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ is made up of nodes or vertices $\mathcal{V} = \{v_1, v_2, \dots\}$ and edges $\mathcal{E} = \{e_{ij} \coloneqq (v_i, v_j), \dots\}$ that join those nodes. Each edge $e_{ij}$ can be assigned attributes, including an edge weight $w_{ij}$.
 For our application, this edge weight will typically represent the number of observed movements in a given time period. Thus the network can encode a representation of the movement between hospitals over a given time period.
@@ -55,7 +81,6 @@ We can use the network to construct a Markov chain, where the expected rate of m
 [Stuff about previous implementations of this idea]
 
 
-
 ## Explicitly Temporal Models
 Previous analyses of movement and spread of contagions through these networks have made the assumption that the weight $w_{ij}$ for a given edge does not change over time, i.e. the network is static.
 One advantage that the VAED provide us is the minute-scale granularity of patient admissions, which allows us to construct temporal networks and models of patient movement.
@@ -63,6 +88,48 @@ One advantage that the VAED provide us is the minute-scale granularity of patien
 <- Description of temporal networks and models>
 
 <- Description of temporally reductive networks and models>
+
+
+```{python}
+#| label: fig-readmission-window
+#| fig-cap: Distribution of readmission time (time between discharge and successive admission of a single patient)
+
+# sourced from readmission_time.py
+readmit_window = pl.read_parquet("../concordant_networks/readmission_time.parquet")
+
+fig, ax = plt.subplots()
+ax.scatter(*(readmit_window.to_numpy().T), marker='.')
+ax.set_xscale('asinh') # todo fix xticks
+ax.set_yscale('log')
+ax.set_xlabel('Readmission Window (days)')
+ax.set_ylabel('Count')
+ax.set_aspect(0.5)
+ax.set_xticks([0, 1, 1e1, 1e2])
+ax.set_xticks([2, 5, 2e1, 5e1, 2e2, 5e2], minor=True)
+sns.despine()
+```
+
+{skip}
+
+### Networks and Projections
+
+Patient transfers can be considered as edges from some source hospital $x_i$ at some time $t_m$ to a target hospital $x_j$ at some time $t_n$. We could work with the exact times, but this will lead to an overly sparse representation that is difficult to work with.
+Instead, we discretise time into bins by treating movements involving some arbitrary hospital $x_i$ between times $t_n$ and $t_n + W$ as instead involving a single node at $v_{i,n} \coloneqq (x_i, t_n)$. 
+Then we can have a temporal network that can be treated as a static network as in @sec-network-modelling, i.e. we have edge weights $w_{ij}$ along the edge $e_{ij} \coloneqq (v_i, v_j)$.
+
+
+
+The network analysis of the temporal network as described above is computationally expensive since it is relatively large ($N_x = 388$ hospitals and $N_t = 259$ fortnightly bins, for $\approx 10000$ nodes).
+We can instead analyse slices of the temporal network, where a slice at $t_n$ consists of nodes at that time discretisation bin, and the related nodes.
+
+
+### Dynamics
+
+<!-- TODO need to work on indexing consistency -->
+
+For the temporal network, we can model the number of patients discharged from some given location ($x_i$) at a given time ($t_n$) as a Poisson random variable with rate $\gamma(x_i, t_n)$. Some proportion $q(x_i, \emptyset)$ of these individuals will not re-admit at any other hospital, and can be removed from the system; the remaining discharged patients will have some probability $p(x_i, t_n, x_j, t_m)$ to re-admit at location $x_j$ at time $t_m$. These probabilites $p$ wil depend on the edges...
+Patients that have $t_i \neq t_j$ will be moved into an auxiliary state $z_{i,j}$...
+Movemnts $z_{ij}$ are distriuted as Uniform(0, W)
 
 
 <!-- 
@@ -98,10 +165,78 @@ We use a "full" temporal simulation with the unprojected temporal network, and a
 
 # Results
 
-We simulate the movement of individuals 
 
 <!-- 
 To isolate the effect of the projections on the movement of patients, we can simulate the model with parmeters $\beta = 0, \eta=0$. -->
+
+```{python}
+# simulation archives from run_zero*.py
+simulation_archives = {
+    'temporal': '../zero_sims/temporal/sim_all_30s.h5',
+    'static': '../zero_sims/static/sim_all_30s.h5',
+    'snapshot': '../zero_sims/snapshot/sims_with_30seeds_pseudocap.h5',
+    'naive_static': '../zero_sims/naive_static/sim_all_30s.h5',
+}
+
+processed_results = {}
+
+# metrics precomputed in compute_summary_stats.ipynb
+for label, archive in simulation_archives.items():
+        processed_results[label] = pl.read_parquet(Path(archive).with_name('metrics_30s.parquet'))
+```
+
+
+We define the _extent_ of a simulation by the number of facilities that some patient has moved to or through within a given number of days. We see in @fig-extent-30 that we get starkly different distriubtions of extent for the naïve static model, commpared to the other models.
+
+```{python}
+#| label: fig-extent-30
+#| fig-cap: "Distribution of 30-day extent in different simulation models on different network types"
+
+combined_all_df = pl.concat(
+    [(df.select('seed', 'extent')
+        .with_columns(
+            pl.lit(label).alias('simulation'), 
+            pl.col('extent').cast(pl.Int64)
+        )
+     ) for label, df in processed_results.items()
+    ]
+)
+
+sim_type_order = ['temporal', 'snapshot', 'static', 'naive_static']
+extent_bins = np.arange(0, combined_all_df.select('extent').max().item()+1)
+
+sns.histplot(
+    combined_all_df, 
+    x = 'extent', 
+    hue = 'simulation', 
+    multiple = 'dodge', 
+    bins = extent_bins, 
+    shrink = 0.8, 
+    hue_order = sim_type_order,
+)
+sns.despine()
+```
+
+```{python}
+# comparisons from compute_summary_stats.ipynb
+comparative_results = dict()
+name_pattern = re.compile(r"(\w+)_x_([\w_]+)\.30s")
+for comp_file in Path("../zero_sims/comparisons/").glob("*.30s.parquet"):
+    pair = name_pattern.match(comp_file.stem).groups()
+    if pair is None:
+        raise RuntimeError(f"Unable to parse file name: {comp_file.name}")
+    paired_comparison = pl.read_parquet(comp_file)
+    comparative_results[pair] = paired_comparison
+    comparative_results[tuple(reversed(pair))] = paired_comparison.with_columns(-pl.col('statistic'))
+```
+
+```{python}
+#| label: tbl-example
+#| tbl-cap: An example table
+
+comparative_results['static', 'snapshot'].head(5)
+```
+
 
 
 # Appendix
