@@ -132,6 +132,28 @@ Patients that have $t_i \neq t_j$ will be moved into an auxiliary state $z_{i,j}
 Movemnts $z_{ij}$ are distriuted as Uniform(0, W)
 
 
+
+.....
+
+
+For the naïve and improved static network models, we can compute the hitting times directly and compare them.
+We can model the dyanmics on these networks as a (continuous time) Markov Chain and extract the mean hitting time to any target hospital from all other hospitals by solving a linear system.
+For the naïve static network, this is relatively straightforward, as we can simply model the rate of movement from hospital $i$ to hospital $j$ as the mean number of observed movements over the observation period (XXX days).
+For the improved static network, we expand the state by including an additional state for each pair of hospitals, so that the residence time at home (between hospital admissions) for indirect transfers can be modelled. Then as with the naïve model, the movement from $i$ to $j$ directly is the mean observed number of transfers over the observation epriod. The indirect movements from $i$ to the intermediate $i,j$ state are derived from the observed number of movements, and the rate from $i,j$ to $j$ is derived from the mean readmission period (as seed in @fig-readmission-window).
+
+Comparing the relative difference in the mean hitting times gives us @fig-hitting-time-difference
+
+```{python}
+#| label: fig-hitting-time-difference
+#| fig-cap: Relative difference between the expected hitting times for the naïve static and improved static models
+
+# temp hack
+# todo port across computation code
+from PIL import Image
+image = Image.open("./precompiled/zrelative_change_hitting_time_home.png")
+image
+```
+
 <!-- 
 We have line-listed patient movement data between {start_date} and {end_date}. This allows us to generate exact patient movement networks up to minute precision.
 By arranging patient journeys within this dataset, we can construct a network of patient transfers when two consecutive (but not necessarily temporally adjacent) admissions of the same patient occur at different healthcare facilities.
@@ -213,6 +235,7 @@ sns.histplot(
     bins = extent_bins, 
     shrink = 0.8, 
     hue_order = sim_type_order,
+    discrete = True,
 )
 sns.despine()
 ```
@@ -230,11 +253,44 @@ for comp_file in Path("../zero_sims/comparisons/").glob("*.30s.parquet"):
     comparative_results[tuple(reversed(pair))] = paired_comparison.with_columns(-pl.col('statistic'))
 ```
 
-```{python}
-#| label: tbl-example
-#| tbl-cap: An example table
+We can frame the empirical cumulative distribution (ECDF) of hitting times from a given seed hospital to a target hospital in a survival analysis view, and compare different experimental setups by comparing the ECDFs of the combinations of hitting times with log-rank tests. Each pair of hospitals yields a separate log-rank test statistic.
+Using a crude Bonferroni correction to counteract the multiple comparisons (which occur due to the $N=338^2$ combinations of seed and target hospitals), we find that there are significant differences between each type of model. We note spikes at very low p-values when comparing the naïve static model to other models.
 
-comparative_results['static', 'snapshot'].head(5)
+
+```{python}
+#| label: fig-logrank-comparison
+#| fig-cap: Log-rank test comparisons between experiments
+
+comparable_pairs = map(lambda x: sorted(x, key=sim_type_order.index), 
+                       itertools.combinations(sim_type_order, 2))
+
+NN = len(sim_type_order) - 1
+
+fig, axs = plt.subplots(nrows=NN, ncols=NN, squeeze=True, sharex=True, sharey=True)
+
+confidence_threshold = 0.01 / (338**2)
+
+for pair in comparable_pairs:
+    index = (sim_type_order.index(pair[1]) - 1, sim_type_order.index(pair[0]))
+    comparison = comparative_results[tuple(pair)]
+
+    sns.histplot(comparison, x='pvalue', log_scale=True, ax=axs[index], kde=True)
+
+    axs[index].axvline(confidence_threshold, color='r')
+    axs[index].set_yscale('log')
+    sns.despine(ax=axs[index])
+
+for label, ax in zip(sim_type_order[1:], axs[:,0]):
+    ax.set_ylabel(label)
+
+for label, ax in zip(sim_type_order, axs[-1,:]):
+    ax.set_xlabel(label)
+
+fig.supxlabel('pvalue')
+fig.supylabel('Count')
+
+for index in zip(*np.triu_indices_from(axs, k=1)):
+    fig.delaxes(axs[index])
 ```
 
 
