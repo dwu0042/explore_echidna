@@ -10,7 +10,11 @@ authors:
 date: last-modified
 format:
     html: default
-    pdf: default
+    pdf:
+        include-in-header:
+            - text: |
+                \usepackage{mathtools}
+        papersize: a4
 bibliography: refs.bib
 csl: plos.csl
 jupyter: python3
@@ -73,7 +77,7 @@ Some exploratory analysis was done in by [@lydeamore_carbapenemase-producing_202
 
 ## Network Modelling {#sec-network-modelling}
 
-A network or graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ is made up of nodes or vertices $\mathcal{V} = \{v_1, v_2, \dots\}$ and edges $\mathcal{E} = \{e_{ij} \coloneqq (v_i, v_j), \dots\}$ that join those nodes. Each edge $e_{ij}$ can be assigned attributes, including an edge weight $w_{ij}$.
+A network or graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ is made up of nodes or vertices $\mathcal{V} = \{v_1, v_2, \dots\}$ and edges $\mathcal{E} = \{e_{ij} \coloneqq (v_i, v_j)\}$ that join those nodes. Each edge $e_{ij}$ can be assigned attributes, including an edge weight $w_{ij}$.
 For our application, this edge weight will typically represent the number of observed movements in a given time period. Thus the network can encode a representation of the movement between hospitals over a given time period.
 
 We can use the network to construct a Markov chain, where the expected rate of movement is governed by the observed movement in the data. For some edge $e_{ij}$ with a number of observed movements $w_{ij}$ over some time period $\tau$, the rate of movement along that edge $\lambda_{ij} = w_{ij} / \tau$, such that the time between movement events along that edge are exponentially distributed $\text{Exp}(\lambda_{ij})$.
@@ -316,7 +320,6 @@ sns.histplot(
     hue = 'simulation', 
     multiple = 'dodge', 
     bins = extent_bins, 
-    shrink = 0.8, 
     hue_order = sim_type_order,
     discrete = True,
 )
