@@ -2,11 +2,12 @@ import abc
 from os import PathLike
 import random
 import numpy as np
+from numpy import typing as npt
 import numba as nb
 from scipy import sparse
 import polars as pl
 import igraph as ig
-from typing import Mapping, Hashable, Sequence, Any, SupportsFloat as Numeric, Iterable
+from typing import Mapping, Hashable, Sequence, Any, SupportsFloat
 from functools import lru_cache
 from pathlib import Path
 
@@ -80,8 +81,9 @@ class ColumnDict(dict):
     def from_prob_final_file(cls, file):
         return cls.from_file(file, "loc", "final_stay")
 
-    def organise_by(self, ordering: Ordering):
-        return ordering.conform(self)
+    def organise_by(self, ordering: Ordering) -> npt.NDArray:
+        output = ordering.conform(self)
+        return np.array(output)
 
 
 def transition_matrix_from_graph(
@@ -178,7 +180,7 @@ class TemporalNetworkConverter(Converter):
         return {"NLOC": self.NLOC, "NT": self.NT}
     
     @classmethod
-    def from_file(cls, network_filepath: str|PathLike, **kwargs):
+    def from_file(cls, network_filepath: str | PathLike, **kwargs):
         graph = gim.make_graph(network_filepath)
         return cls(network=graph, **kwargs)
 
@@ -203,6 +205,14 @@ class TemporalNetworkConverter(Converter):
         ).tocsr()
 
         return mapped_parameters
+    
+    def delay(self, n: int):
+        """Reformats internal attributes so that the starting time is delayed by n time steps"""
+
+        self.NT -= n
+
+        nidx = int(n * self.NLOC)
+        self.A = self.A[nidx:, nidx:] # CSR sparse -> CSR sparse
 
 
 class SnapshotWithHomeConverter(Converter):
@@ -370,7 +380,7 @@ class StaticConverter(Converter):
     }
 
     def __init__(
-        self, network: ig.Graph, ordering: Ordering, time_span: Numeric | None = None, purge_selfloops=False
+        self, network: ig.Graph, ordering: Ordering, time_span: SupportsFloat | None = None, purge_selfloops=False
     ):
         self.ordering = ordering
 
@@ -464,7 +474,7 @@ class StaticConverter(Converter):
 class NaiveStaticConverter(Converter):
 
     def __init__(
-        self, network: ig.Graph, ordering: Ordering, time_span: Numeric | None=None
+        self, network: ig.Graph, ordering: Ordering, time_span: SupportsFloat | None=None
     ):
         self.ordering = ordering
 

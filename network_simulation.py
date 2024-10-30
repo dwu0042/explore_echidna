@@ -369,7 +369,3 @@ class TemporalSim(SimulationWithMovers):
         super().reset(soft=soft)
 
         self.time_travellers = np.zeros_like(self.time_travellers, dtype=np.int64)
-
-    def delay(self, n: int):
-
-        raise NotImplementedError("old code uses a different state setup, which makes this tricky to port")
