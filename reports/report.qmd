@@ -97,15 +97,61 @@ One advantage that the VAED provide us is the minute-scale granularity of patien
 # sourced from readmission_time.py
 readmit_window = pl.read_parquet("../concordant_networks/readmission_time.parquet")
 
+# naive static distribution
+mean_window = (
+    readmit_window
+    .with_columns((pl.col('readmission_time') * pl.col('count')).alias('weighted_sum'))
+    .select(pl.col('weighted_sum').sum() / pl.col('count').sum())
+    .item()
+)
+num_readmits = readmit_window.select(pl.col('count').sum()).item()
+
+xs = np.arange(0, 366, dtype=np.float64)
+naive_static_dist = num_readmits / mean_window * np.exp(-xs / mean_window) # scaling to N
+
+# piecewise distribution (improved static)
+threshold = 4
+shorts = readmit_window.filter(pl.col('readmission_time') <= threshold)
+longs = readmit_window.filter(pl.col('readmission_time') > threshold)
+
+short_window = (
+    shorts
+    .with_columns((pl.col('readmission_time') * pl.col('count')).alias('weighted_sum'))
+    .select(pl.col('weighted_sum').sum() / pl.col('count').sum())
+    .item()
+)
+n_shorts = shorts.select(pl.col('count').sum()).item()
+
+long_window = (
+    longs
+    .with_columns((pl.col('readmission_time') * pl.col('count')).alias('weighted_sum'))
+    .select(pl.col('weighted_sum').sum() / pl.col('count').sum())
+    .item()
+)
+n_longs = longs.select(pl.col('count').sum()).item()
+
+sxs = np.arange(0, threshold+1, dtype=np.float64)
+short_dist = n_shorts / short_window * np.exp(-sxs / short_window)
+
+lxs = np.arange(threshold, 366, dtype=np.float64)
+long_dist = n_longs / long_window * np.exp(-lxs / long_window)
+
 fig, ax = plt.subplots()
-ax.scatter(*(readmit_window.to_numpy().T), marker='.')
-ax.set_xscale('asinh') # todo fix xticks
+ax.scatter(*(readmit_window.to_numpy().T), marker='.', color='k')
+h_0 = ax.plot(xs, naive_static_dist, color='C0', label='Naïve Static')
+h_1 = ax.plot(sxs, short_dist, color='C1', label='Improved Static')
+ax.plot(lxs, long_dist, color='C1')
+ax.axvline(threshold, color='C1', linestyle='dashed')
+ax.set_xscale('asinh')
 ax.set_yscale('log')
 ax.set_xlabel('Readmission Window (days)')
 ax.set_ylabel('Count')
 ax.set_aspect(0.5)
 ax.set_xticks([0, 1, 1e1, 1e2])
 ax.set_xticks([2, 5, 2e1, 5e1, 2e2, 5e2], minor=True)
+ax.set_xlim(-1e-1, 1e3) # !! this is manual
+ax.set_ylim(5e3, 1e8) # !! this is manual
+ax.legend(handles=[*h_0, *h_1])
 sns.despine()
 ```
 
@@ -297,6 +343,7 @@ Using a crude Bonferroni correction to counteract the multiple comparisons (whic
 ```{python}
 #| label: fig-logrank-comparison
 #| fig-cap: Log-rank test comparisons between experiments
+#| cache: true
 
 comparable_pairs = map(lambda x: sorted(x, key=sim_type_order.index), 
                        itertools.combinations(sim_type_order, 2))
