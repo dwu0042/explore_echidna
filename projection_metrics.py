@@ -184,7 +184,7 @@ def snapshot_metric_ranks(
 ):
     metric_df = metric_over_snapshots(snapshots, metric)
 
-    return rank_metrics(metric_df, ordered=True, descending=True, fill=fill)
+    return rank_metrics(metric_df, ordered=ordered, descending=descending, fill=fill)
 
 
 def plot_rankings(
