@@ -18,8 +18,8 @@ format:
 bibliography: refs.bib
 csl: plos.csl
 jupyter: python3
-filters:
-    - diagram
+# filters:
+#     - diagram
 execute:
     echo: false
     warning: false
@@ -51,6 +51,24 @@ sns.set_context('paper')
 - This "indirect" movement has implications on the rate of spread of a hypothetical contagion through the hospital system. It causes dispersal of patients to be slower than expected.
 - We can recover some of this behaviour by introducing an additional layer in the network to represent indirect movement.
 
+# Glossary
+
+| symbol | name | description |
+|--------|------|-------------|
+| v | vertex | |
+| e | edge | |
+| i | index of vertex | |
+| j | index of other vertex | |
+| t | time | |
+| x | location | hospital |
+| W | bin width | discretisation of the temporal network |
+| $\gamma$ | discharge | rate of discharge |
+| N | num | size of something |
+| k | hitting time | (expected) |
+| $\lambda$ | rate | of an event / process |
+| T | time period | of the _entire_ simulation |
+
+define a vertex $v_i = (x_i, t_i)$ made up of a location and time resp.
 
 # Introduction
 
@@ -87,7 +105,13 @@ We can use the network to construct a Markov chain, where the expected rate of m
 
 ## Explicitly Temporal Models
 Previous analyses of movement and spread of contagions through these networks have made the assumption that the weight $w_{ij}$ for a given edge does not change over time, i.e. the network is static.
-One advantage that the VAED provide us is the minute-scale granularity of patient admissions, which allows us to construct temporal networks and models of patient movement.
+This implies that the rate movement of patients between hospitals is Poisson, or that the time between successive admissions for a given patient is exponentially distributed. Empirically, this is poor modelling choice, since the readmission window, as shown in @fig-readmission-window, is definitely not exponentially distributed, and has a significant heavy tail. A naïve static approximation that matches the mean readmission window will be inaccurate; in the following, we will attempt to resolve this problem in three increasingly granular ways:
+
+1. using a simple piecewise exponential approximation, by choosing a single threshold
+2. using a series of static networks with ...
+3. using a temporal network that exactly captures the readmission window distribution
+
+<!-- One advantage that the VAED provide us is the minute-scale granularity of patient admissions, which allows us to construct temporal networks and models of patient movement. -->
 
 <- Description of temporal networks and models>
 
@@ -163,8 +187,8 @@ sns.despine()
 
 ### Networks and Projections
 
-Patient transfers can be considered as edges from some source hospital $x_i$ at some time $t_m$ to a target hospital $x_j$ at some time $t_n$. We could work with the exact times, but this will lead to an overly sparse representation that is difficult to work with.
-Instead, we discretise time into bins by treating movements involving some arbitrary hospital $x_i$ between times $t_n$ and $t_n + W$ as instead involving a single node at $v_{i,n} \coloneqq (x_i, t_n)$. 
+Patient transfers can be considered as edges from some source hospital $x_i$ at some time $t_i$ to a target hospital $x_j$ at some time $t_j$. We could work with the exact times, but this will lead to an overly sparse representation that is difficult to work with.
+Instead, we discretise time into bins by treating movements involving some arbitrary hospital $x_i$ between times $t_i$ and $t_i + W$ as instead involving a single node at $v_i \coloneqq (x_i, t_i)$. 
 Then we can have a temporal network that can be treated as a static network as in @sec-network-modelling, i.e. we have edge weights $w_{ij}$ along the edge $e_{ij} \coloneqq (v_i, v_j)$.
 
 
@@ -176,6 +200,8 @@ We can instead analyse slices of the temporal network, where a slice at $t_n$ co
 ### Dynamics
 
 <!-- TODO need to work on indexing consistency -->
+
+
 
 For the temporal network, we can model the number of patients discharged from some given location ($x_i$) at a given time ($t_n$) as a Poisson random variable with rate $\gamma(x_i, t_n)$. Some proportion $q(x_i, \emptyset)$ of these individuals will not re-admit at any other hospital, and can be removed from the system; the remaining discharged patients will have some probability $p(x_i, t_n, x_j, t_m)$ to re-admit at location $x_j$ at time $t_m$. These probabilites $p$ wil depend on the edges...
 Patients that have $t_i \neq t_j$ will be moved into an auxiliary state $z_{i,j}$...
@@ -295,7 +321,7 @@ for label, archive in simulation_archives.items():
 ```
 
 
-We define the _extent_ of a simulation by the number of facilities that some patient has moved to or through within a given number of days. We see in @fig-extent-30 that we get starkly different distriubtions of extent for the naïve static model, commpared to the other models.
+We define the _extent_ of a simulation by the number of facilities that some patient has moved to or through within a given number of days. We see in @fig-extent-30 that we get starkly different distributions of extent for the naïve static model, compared to the other models.
 
 ```{python}
 #| label: fig-extent-30
@@ -340,7 +366,7 @@ for comp_file in Path("../zero_sims/comparisons/").glob("*.30s.parquet"):
 ```
 
 We can frame the empirical cumulative distribution (ECDF) of hitting times from a given seed hospital to a target hospital in a survival analysis view, and compare different experimental setups by comparing the ECDFs of the combinations of hitting times with log-rank tests. Each pair of hospitals yields a separate log-rank test statistic.
-Using a crude Bonferroni correction to counteract the multiple comparisons (which occur due to the $N=338^2$ combinations of seed and target hospitals), we find that there are significant differences between each type of model. We note spikes at very low p-values when comparing the naïve static model to other models.
+Using a crude Bonferroni correction to counteract the multiple comparisons (which occur due to the ${N_x}^2=338^2$ combinations of seed and target hospitals), we find that there are significant differences between each type of model. We note spikes at very low p-values when comparing the naïve static model to other models.
 
 
 ```{python}
@@ -353,7 +379,12 @@ comparable_pairs = map(lambda x: sorted(x, key=sim_type_order.index),
 
 NN = len(sim_type_order) - 1
 
-fig, axs = plt.subplots(nrows=NN, ncols=NN, squeeze=True, sharex=True, sharey=True)
+fig, axs = plt.subplots(
+    nrows=NN, ncols=NN, 
+    squeeze=True, 
+    sharex=True, sharey=True, 
+    layout="constrained"
+)
 
 confidence_threshold = 0.01 / (338**2)
 
@@ -364,7 +395,7 @@ for pair in comparable_pairs:
     sns.histplot(comparison, x='pvalue', log_scale=True, ax=axs[index], kde=True)
 
     axs[index].axvline(confidence_threshold, color='r')
-    axs[index].set_yscale('log')
+    axs[index].set_yscale('asinh')
     sns.despine(ax=axs[index])
 
 for label, ax in zip(sim_type_order[1:], axs[:,0]):
@@ -472,3 +503,9 @@ In order to capture patients leaving and then subsequently returning to hospital
 This is implicitly captured in the network data structure by setting two additional edge attributes that represent the amount of flow on each of the two new secondary layer edges respectively.
 
 We remove self-loops from the static network; we attempt one model without self-loops in only the direct layer (since this does not make physical sense), and another without self-loops in both the direct layer, and the indirect layer (we uspected that these self-loops slowed the movement of individuals down, but the resulting effect is the explosion of movement in the first simulation step)
+
+## Snapshots
+
+Network analysis of the explicitly-temporal network is difficult, since the number of nodes is relatively large ($N \sim N_x \times N_t$), and inversely scales with the temporal discretisation chosen ($N_t \sim 1/W$).
+
+We can instead look at the series of static network induced by projection onto the locations at each time point. This allows 
