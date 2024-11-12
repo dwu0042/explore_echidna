@@ -18,6 +18,7 @@ concordant_networks/
 *pkl
 *.lgl
 *.profile
+*.h5
 
 reports/report_files
 reports/report.html
