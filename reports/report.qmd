@@ -18,8 +18,6 @@ format:
 bibliography: refs.bib
 csl: plos.csl
 jupyter: python3
-# filters:
-#     - diagram
 execute:
     echo: false
     warning: false
@@ -29,8 +27,9 @@ execute:
 ```{python}
 import numpy as np
 import polars as pl
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, colors
 import seaborn as sns
+import h5py
 import itertools
 import re
 
@@ -51,7 +50,7 @@ sns.set_context('paper')
 - This "indirect" movement has implications on the rate of spread of a hypothetical contagion through the hospital system. It causes dispersal of patients to be slower than expected.
 - We can recover some of this behaviour by introducing an additional layer in the network to represent indirect movement.
 
-# Glossary
+<!-- # Glossary
 
 | symbol | name | description |
 |--------|------|-------------|
@@ -68,7 +67,7 @@ sns.set_context('paper')
 | $\lambda$ | rate | of an event / process |
 | T | time period | of the _entire_ simulation |
 
-define a vertex $v_i = (x_i, t_i)$ made up of a location and time resp.
+define a vertex $v_i = (x_i, t_i)$ made up of a location and time resp. -->
 
 # Introduction
 
@@ -84,14 +83,13 @@ Understanding of the spread of AMR through hospital systems has been studied in 
 
 ## Setting and data sources
 
-<- yank from [@lydeamore_carbapenemase-producing_2024]
+Victoria, Australia, has a population of 7.0 million people [@ABS_state_populations]. Its hospital system consists of more than 300 hospital campuses, which vary in size, case mix and services. 
 
-Admissions data is from the Victorian Admitted Episdoes Dataset (VAED).
+Hospital admissions data was sourced from the Victorian Admitted Episdoes Dataset (VAED) [@VAED_official].
+In particular, admissions data from [] to [] ([] days) was used in this study. All Victorian hospital admissions during this study period are included. The total number of admissions is []
+This data was aggregated into time-discretised temporal networks (described below), and exported from the database; further analysis as presented in this paper is performed on external machines with no access to identifiable protected health information.
 
-Some exploratory analysis was done in by [@lydeamore_carbapenemase-producing_2024]
-
-
-
+Some exploratory analysis of this data was done in by [@lydeamore_carbapenemase-producing_2024].
 
 ## Network Modelling {#sec-network-modelling}
 
@@ -187,20 +185,18 @@ sns.despine()
 
 ### Networks and Projections
 
-Patient transfers can be considered as edges from some source hospital $x_i$ at some time $t_i$ to a target hospital $x_j$ at some time $t_j$. We could work with the exact times, but this will lead to an overly sparse representation that is difficult to work with.
-Instead, we discretise time into bins by treating movements involving some arbitrary hospital $x_i$ between times $t_i$ and $t_i + W$ as instead involving a single node at $v_i \coloneqq (x_i, t_i)$. 
-Then we can have a temporal network that can be treated as a static network as in @sec-network-modelling, i.e. we have edge weights $w_{ij}$ along the edge $e_{ij} \coloneqq (v_i, v_j)$.
-
+Patient transfers can be considered as edges from some source hospital $x_i$ at some time $t_i$ to a target hospital $x_j$ at some time $t_j$. 
+Because we cannot export exact times, we instead discretise time.
+This is done by treating movements involving some arbitrary hospital $x_i$ between times $t_i$ and $t_i + W$ as instead involving a single node at $v_i \coloneqq (x_i, t_i)$. 
+Then we can have a temporal network that can be treated as a static network as in @sec-network-modelling, i.e. we have edge weights $w_{ij}$ along the edge $e_{ij} \coloneqq (v_i, v_j)$, but with some explicit temporal representation.
 
 
 The network analysis of the temporal network as described above is computationally expensive since it is relatively large ($N_x = 388$ hospitals and $N_t = 259$ fortnightly bins, for $\approx 10000$ nodes).
 We can instead analyse slices of the temporal network, where a slice at $t_n$ consists of nodes at that time discretisation bin, and the related nodes.
 
 
-### Dynamics
 
-<!-- TODO need to work on indexing consistency -->
-
+## Dynamics
 
 
 For the temporal network, we can model the number of patients discharged from some given location ($x_i$) at a given time ($t_n$) as a Poisson random variable with rate $\gamma(x_i, t_n)$. Some proportion $q(x_i, \emptyset)$ of these individuals will not re-admit at any other hospital, and can be removed from the system; the remaining discharged patients will have some probability $p(x_i, t_n, x_j, t_m)$ to re-admit at location $x_j$ at time $t_m$. These probabilites $p$ wil depend on the edges...
@@ -240,10 +236,8 @@ We use a "full" temporal simulation with the unprojected temporal network, and a
 | $\gamma$  | Rate of discharge from hospital |
 | $M$       | Transition matrix inferred from network | -->
 
-# Results
 
-
-## A Reduced Model
+### A Reduced Model
 
 For the naïve and improved static network models, we can compute the hitting times directly and compare them.
 We can model the dyanmics on these networks as a (continuous time) Markov Chain and extract the mean hitting time to any target hospital from all other hospitals. 
@@ -253,7 +247,7 @@ A simplistic model of the effect of indirect transfer can be modelled with the f
 :::{#fig-model-going-home layout-ncol="2"}
 
 ```{dot}
-//| fig-width: 50%
+//| fig-width: 30%
 digraph G {
     S₀ -> S₁ [ label="λ₀" ]
 }
@@ -271,31 +265,46 @@ digraph G {
 Toy model of the effect of indirect transfer on hitting time
 :::
 
-In the model without indirect transfer, we can compute the expected hitting time $k$ from $S_0$ to $S_1$
+In the model without indirect transfer, we can compute the expected hitting time $k_{1}$ from $S_0$ to $S_1$ as
 
-$$k = {\lambda_0}^{-1}$$
+$$k_{1} = {\lambda_0}^{-1}$$
 
-In a model with indirect transfer, we introduce an additional state $S_2$ which represents the indirect pathway. If the probability of direct transfer is $p$ given that an individual will move out of $S_0$, and the average indirect transfer period is $T = \lambda_2^{-1}$, the we can compute the hitting time $k$ of $S_1$ given we start at $S_0$:
+In a model with indirect transfer, we introduce an additional state $S_2$ which represents the indirect pathway. If the probability of direct transfer is $p$ given that an individual will move out of $S_0$, and the average indirect transfer period is $T = \lambda_2^{-1}$, the we can compute the hitting time $k_{1^*}$ of $S_1$ given we start at $S_0$:
 
-$$k = {\lambda_0}^{-1} + \frac{1-p}{\lambda_2}$$
+$$k_{1^*} = {\lambda_0}^{-1} + \frac{1-p}{\lambda_2}$$
 
 i.e. the hitting time is increased by $\frac{1-p}{\lambda_2}$.
 
-For a larger network, the number of possible paths causes complications for explicit computation of the effect, but we can always expect it to follow a similar principle, where splitting transfers into a direct path and a slower indirect path will add to the expected hitting time. These can be obtained by solving a linear system @Norris_Markov_Chains_1997.
+For a larger network, the number of possible paths causes complications for explicit computation of the effect, but we can always expect it to follow a similar principle, where splitting transfers into a direct path and a slower indirect path will add to the expected hitting time. These can be obtained by solving a linear system [@Norris_Markov_Chains_1997].
+
+
+# Results
+
+## Temporal Network Analysis
+
+
+
+
+## Effect of Home-return Mechanic
+
 For the naïve static network, we can model the rate of movement from hospital $i$ to hospital $j$ as the mean number of observed movements over the observation period (XXX days).
 For the improved static network, we expand the state by including an additional state for each pair of hospitals, so that the residence time at home (between hospital admissions) for indirect transfers can be modelled. Then as with the naïve model, the movement from $i$ to $j$ directly is the mean observed number of transfers over the observation epriod. The indirect movements from $i$ to the intermediate $i,j$ state are derived from the observed number of movements, and the rate from $i,j$ to $j$ is derived from the mean readmission period (as seed in @fig-readmission-window).
 
-Comparing the relative difference in the mean hitting times gives us @fig-hitting-time-difference
+Comparing the (uniform) relative difference in the mean hitting times ($= k_{1^*} / (k_1 + 1)$) gives us @fig-hitting-time-difference. We see that there is significant banding in the structure of the matrix.
 
 ```{python}
 #| label: fig-hitting-time-difference
 #| fig-cap: Relative difference between the expected hitting times for the naïve static and improved static models
 
-# temp hack
-# todo port across computation code
-from PIL import Image
-image = Image.open("./precompiled/zrelative_change_hitting_time_home.png")
-image
+with h5py.File('../hitting_time_analysis/hitting_time_arrays.h5', 'r') as fp:
+    naive_static_times = fp['naive_static'][:]
+    delayed_static_times = fp['delayed_static'][:]
+
+relative_change = delayed_static_times / (naive_static_times + 1)
+plt.matshow(relative_change, cmap='viridis', fignum=99)
+plt.colorbar(label='Relative difference in hitting time')
+plt.xlabel('Hospital to hit')
+plt.ylabel('Starting hospital');
 ```
 
 
@@ -410,6 +419,11 @@ fig.supylabel('Count')
 for index in zip(*np.triu_indices_from(axs, k=1)):
     fig.delaxes(axs[index])
 ```
+
+# Discussion
+
+The modelling of patient transfers between hospitals has historically been done by using static networks.
+
 
 
 
