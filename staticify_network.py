@@ -95,15 +95,13 @@ def generate_graph_from_edge_list(edge_df: pl.DataFrame) -> ig.Graph:
         .otherwise(pl.col("direct_weight"))
         .alias("direct_weight")
     ).with_columns(
-        pl.col("source_loc").map_dict(node_index).alias("mapped_source"),
-        pl.col("dest_loc").map_dict(node_index).alias("mapped_dest"),
+        pl.col("source_loc").replace_strict(node_index, return_dtype=pl.Int32).alias("mapped_source"),
+        pl.col("dest_loc").replace_strict(node_index, return_dtype=pl.Int32).alias("mapped_dest"),
     )
 
-    edge_list = mapped_edge_df.select("mapped_source", "mapped_dest").to_dict()
-    edges = zip(edge_list["mapped_source"], edge_list["mapped_dest"])
+    edges = mapped_edge_df.select(pl.concat_list("mapped_source", "mapped_dest")).to_series().to_list()
 
     edge_info = mapped_edge_df.drop("mapped_source", "mapped_dest").to_dict()
 
-    G.add_edges(es=list(edges), attributes=edge_info)
-
+    G.add_edges(es=edges, attributes=edge_info)
     return G
