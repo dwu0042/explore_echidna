@@ -42,6 +42,23 @@ class BiLayer(ThreeDScene):
 
         vertices = ['A', 'B', 'C']
         
+        graph_config = dict(
+            labels = True,
+            layout = 'circular',
+            vertex_config = dict(
+                fill_opacity = 1.0,
+                stroke_color = BLACK,
+            ),
+            edge_config = dict(
+                path_arc = 1.2,
+                loop_config = {
+                    "angle_between_points": PI, 
+                    "path_arc": 3 * PI / 2,
+                },
+                color = BLACK,
+            )
+        )
+
         G0 = DiGraph(
             vertices = vertices,
             edges = [
@@ -49,15 +66,7 @@ class BiLayer(ThreeDScene):
                 ('B', 'C'),
                 ('A', 'C'),
             ],
-            labels = True,
-            layout = "circular",
-            vertex_config = {
-                'fill_opacity': 1.0,
-            },
-            edge_config = {
-                "path_arc" : 1.2,
-                "color": BLACK,
-            },
+            **graph_config
         )
 
         G0.set_z(levels[0])
@@ -79,16 +88,7 @@ class BiLayer(ThreeDScene):
                 ('B', 'B'),
                 ('C', 'C'),
             ],
-            labels = True,
-            layout = "circular",
-            vertex_config={
-                'fill_opacity': 1.0,
-            },
-            edge_config = {
-                "path_arc" : 1.2,
-                "loop_config": {"angle_between_points": PI, "path_arc": 3 * PI / 2},
-                "color": BLACK,
-            },
+            **graph_config
         )
 
         G1.set_z(levels[1])
