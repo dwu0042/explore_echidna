@@ -36,11 +36,11 @@ class Ordering:
     @lru_cache()
     def __getitem__(self, key):
         """A reverse search of the order list"""
-        value = nparr_find(self.order, int(key))
-        if value is None:
-            raise NotFound
-        # value is a 1D tuple; we should return the interior item
-        return value[0]
+        value = np.nonzero(self.order == key)[0]
+        # check for not found
+        if len(value) == 0:
+            raise NotFound(key)
+        return value.item()
 
     @classmethod
     def from_file(cls, file_name: PathLike):
@@ -106,7 +106,7 @@ def transition_matrix_from_graph(
     else:
         graph_order_base = graph.vs[ordering_key]
 
-    graph_paste_order = [ordering[int(k)] for k in graph_order_base]
+    graph_paste_order = [ordering[k] for k in graph_order_base]
     A = graph.get_adjacency(attribute=adjacency_attribute)
     if matrix_size is None:
         MAXN = len(graph_paste_order)
