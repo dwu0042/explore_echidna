@@ -190,7 +190,7 @@ class SnapshotWithHome(SimulationWithMovers):
 
         indirect_return_rate = TX_in[self.current_index] * X
         indirect_returns_raw = truncated_poisson(indirect_return_rate * self.dt, X)
-        indirect_returns = indirect_returns_raw.sum(axis=1).reshape(NARROW)
+        indirect_returns = indirect_returns_raw.sum(axis=0).reshape(NARROW)
         self.mover_in.append(indirect_returns)
 
         I_new = np.clip(
@@ -259,7 +259,7 @@ class StaticWithHome(SimulationWithMovers):
 
         indirect_return_rate = TX_in * X
         indirect_returns_raw = truncated_poisson(indirect_return_rate * self.dt, X)
-        indirect_returns = indirect_returns_raw.sum(axis=1).reshape(NARROW)
+        indirect_returns = indirect_returns_raw.sum(axis=0).reshape(NARROW)
         self.mover_in.append(indirect_returns)
 
         I_new = np.clip(
