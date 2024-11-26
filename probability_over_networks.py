@@ -1,5 +1,6 @@
 # test the static probability theory
 
+from typing import Hashable
 import numpy as np
 import polars as pl
 import igraph as ig
@@ -104,9 +105,9 @@ def get_snapshots(G: ig.Graph):
         snapshot['time'] = t
         snapshot['duration'] = dt
 
-    return snapshots
+    return {snapshot['time']: snapshot for snapshot in snapshots}
 
-def simulate_on(G: ig.Graph | list[ig.Graph], ordering, type='temporal', repeats=30):
+def simulate_on(G: ig.Graph | dict[Hashable, ig.Graph], ordering, type='temporal', repeats=30):
     ordering = nconv.Ordering(ordering)
     prob_zero = np.array([0.0 for _ in ordering])
     base_params = {
@@ -115,6 +116,8 @@ def simulate_on(G: ig.Graph | list[ig.Graph], ordering, type='temporal', repeats
     }
 
     sim_hists = []
+    move_in = []
+    move_out = []
     match type:
         case "temporal":
             converter = nconv.TemporalNetworkConverter(
@@ -127,10 +130,18 @@ def simulate_on(G: ig.Graph | list[ig.Graph], ordering, type='temporal', repeats
                 dt = 1.0,
                 num_times=converter.NT,
                 discretisation_size=converter.DT,
-                track_movement=False,
+                track_movement=True,
             )
         case "snapshot":
-            pass
+            converter = nconv.SnapshotWithHomeConverter(G, ordering=ordering)
+            parameters = converter.map_parameters(base_params)
+            sim = nsiml.SnapshotWithHome(
+                full_size=converter.ordering.sizes,
+                parameters=parameters,
+                timings=converter.snapshot_times,
+                track_movement=True,
+                dt=1.0
+            )
         case "static":
             converter = nconv.StaticConverter(G, ordering=ordering, time_span=20)
             parameters = converter.map_parameters(base_params)
@@ -138,15 +149,25 @@ def simulate_on(G: ig.Graph | list[ig.Graph], ordering, type='temporal', repeats
                 full_size = converter.ordering.sizes,
                 parameters=parameters,
                 dt =1.0,
-                track_movement=False
+                track_movement=True
             )
+        case _:
+            raise ValueError(f"invalid type: {type}")
     sim.seed(n_seed_events=0, n_seed_number=0)
     for repeat in range(repeats):
         sim.reset(soft=False)
         sim.state[0] = 1
         sim.simulate(until=19, nostop=True)
         sim_hists.append(sim.history)
-    return sim_hists
+        move_in.append(sim.mover_in)
+        move_out.append(sim.mover_out)
+    return {
+        'hists': sim_hists,
+        'move_out': move_out,
+        'move_in': move_in,
+        'converter': converter,
+        'sim': sim,
+    }
 
 
 def summarise_hist_outcome(hists):
@@ -164,12 +185,16 @@ if __name__ == "__main__":
 
     S = collapse_static(G)
 
+    Ps = get_snapshots(G)
 
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
 
         static_hists = simulate_on(S, ordering=sizes, type='static', repeats=1000)
-        print('Static', summarise_hist_outcome(static_hists))
+        print('Static', summarise_hist_outcome(static_hists['hists']))
+
+        snapshot_hists = simulate_on(Ps, ordering=sizes, type='snapshot', repeats=1000)
+        print('Snapshot', summarise_hist_outcome(snapshot_hists['hists']))
 
         temporal_hists = simulate_on(G, ordering=sizes, type='temporal', repeats=1000)
-        print('Temporal', summarise_hist_outcome(temporal_hists))
+        print('Temporal', summarise_hist_outcome(temporal_hists['hists']))
