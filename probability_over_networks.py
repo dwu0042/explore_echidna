@@ -69,15 +69,15 @@ def make_graph_from_name_edges(name_edges, vertex_names=None):
 
 def basic_example():
     locs = ["A", "B", "C"]
-    times = list(range(20))
+    times = [i+i for i in range(20)]
     vertex_info = {
         f"{loc}{time}": {"loc": loc, "time": time} for time in times for loc in locs
     }
 
     edge_info = {
         ("A0", "C0"): {"weight": 1.0},
-        **{(f"A{i}", f"B{i+1}"): {"weight": 1.0} for i in range(19)},
-        ("A10", "C15"): {"weight": 1.0},
+        **{(f"A{i}", f"B{i+2}"): {"weight": 1.0} for i in times[:-1]},
+        ("A20", "C30"): {"weight": 1.0},
     }
 
     ordering = {loc: 10 for loc in locs}
@@ -143,7 +143,7 @@ def simulate_on(G: ig.Graph | dict[Hashable, ig.Graph], ordering, type='temporal
                 dt=1.0
             )
         case "static":
-            converter = nconv.StaticConverter(G, ordering=ordering, time_span=20)
+            converter = nconv.StaticConverter(G, ordering=ordering)
             parameters = converter.map_parameters(base_params)
             sim = nsiml.StaticWithHome(
                 full_size = converter.ordering.sizes,
