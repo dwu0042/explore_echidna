@@ -328,7 +328,7 @@ class SnapshotWithHomeConverter(Converter):
             arrive_places = np.where(arrives)
             inwards_mat = np.zeros_like(arrives)
             inwards_mat[arrive_places] = arrives[arrive_places] / at_home[arrive_places]
-            inwards_weighting_matrices.append(inwards_mat)
+            inwards_weighting_matrices.append(np.clip(inwards_mat, 0, 1))
 
             at_home -= arrives
 

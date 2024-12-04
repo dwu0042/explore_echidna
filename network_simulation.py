@@ -95,7 +95,7 @@ class Simulation:
             self.state = self.step()
             self._history.append(self.state)
             self.ts.append(self.ts[-1] + self.dt)
-            if np.sum(self.state) < 1 and not nostop:
+            if not nostop and np.sum(self.state) < 1:
                 print(f"Early termination: {self.ts[-1] = }")
                 break
 
@@ -188,8 +188,10 @@ class SnapshotWithHome(SimulationWithMovers):
         direct_move_to = move_to[:, : self.NHOSP].sum(axis=0).reshape(NARROW)
         indirect_move_to = move_to[:, self.NHOSP:].reshape(WIDE)
 
-        indirect_return_rate = TX_in[self.current_index] * X
-        indirect_returns_raw = truncated_poisson(indirect_return_rate * self.dt, X)
+        # indirect_return_rate = TX_in[self.current_index] * X * self.dt
+        # indirect_returns_raw = truncated_poisson(indirect_return_rate, X)
+        indirect_return_prob = TX_in[self.current_index] * self.dt
+        indirect_returns_raw = self.rng.binomial(n=X, p=indirect_return_prob)
         indirect_returns = indirect_returns_raw.sum(axis=0).reshape(NARROW)
         self.mover_in.append(indirect_returns)
 
@@ -255,17 +257,22 @@ class StaticWithHome(SimulationWithMovers):
             n_remain.flatten(), TX_out
         )
         direct_move_to = move_to[:, : self.NHOSP].sum(axis=0).reshape(NARROW)
-        indirect_move_to = move_to[:, self.NHOSP:].reshape(WIDE)
+        # this ascontiguousarray is to prevent copies in the np.add later
+        indirect_move_to = np.ascontiguousarray(move_to[:, self.NHOSP:].reshape(WIDE))
 
-        indirect_return_rate = TX_in * X
-        indirect_returns_raw = truncated_poisson(indirect_return_rate * self.dt, X)
+        # indirect_return_rate = TX_in * X
+        # indirect_returns_raw = truncated_poisson(indirect_return_rate * self.dt, X)
+        indirect_return_prob = TX_in * self.dt
+        indirect_returns_raw = self.rng.binomial(n=X, p=indirect_return_prob)
         indirect_returns = indirect_returns_raw.sum(axis=0).reshape(NARROW)
         self.mover_in.append(indirect_returns)
 
         I_new = np.clip(
             I + n_inf - n_out + direct_move_to + indirect_returns, 0, self.N
         )
-        self.shadow_state = X - indirect_returns_raw + indirect_move_to
+        # self.shadow_state = self.shadow_state + indirect_move_to - indirect_returns_raw.T
+        np.subtract(self.shadow_state, indirect_returns_raw, out=self.shadow_state)
+        np.add(self.shadow_state, indirect_move_to, out=self.shadow_state)
 
         return I_new
     
