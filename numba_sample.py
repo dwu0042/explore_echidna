@@ -1,6 +1,6 @@
 import numpy as np
 from numba import njit
-from numba import guvectorize, float64, int64
+from numba import guvectorize, float64, int64, prange
 from scipy import sparse
 
 
@@ -72,6 +72,36 @@ def _mn_sparse_full(
 
     return result
 
+@njit()
+def _mn_sparse_full_partitioned(
+    input_vector, prob_matrix_data, prob_matrix_indices, prob_matrix_indptr, left_partition_size, right_partition_size
+):
+    n_in = len(input_vector)
+    x_left, y_left = left_partition_size
+    x_right, y_right = right_partition_size
+    assert n_in == x_left
+    assert n_in == x_right
+
+    collated_results = np.zeros((n_in, y_left+y_right), dtype=np.int64)
+    left_part = np.zeros(left_partition_size, dtype=np.int64)
+    right_part = np.zeros(right_partition_size, dtype=np.int64)
+
+    for i in range(n_in):
+        v = input_vector[i]
+        if v == 0:
+            continue
+
+        row_start = prob_matrix_indptr[i]
+        row_end = prob_matrix_indptr[i + 1]
+        probs = prob_matrix_data[row_start:row_end]
+
+        samples = np.random.multinomial(v, probs)
+        collated_results[i, prob_matrix_indices[row_start:row_end]] += samples
+
+    left_part += collated_results[:, :y_left]
+    right_part += collated_results[:, y_left:] 
+
+    return left_part, right_part
 
 def multinomial_sparse_full(trials, prob_matrix: sparse.csr_array):
     """Performs numba-acceled multinomial smapling for a large 2D probability matrix
@@ -87,6 +117,26 @@ def multinomial_sparse_full(trials, prob_matrix: sparse.csr_array):
         prob_matrix.indices,
         prob_matrix.indptr,
         prob_matrix.shape,
+    )
+
+def multinomial_sparse_full_partitioned(trials, prob_matrix: sparse.csr_array, partition_index: int):
+    """Performs numba-acceled multinomial smapling for a large 2D probability matrix
+
+    Arguments
+    ---
+    trials: <np.ndarray[int]> vector of number of trials, corresponds to rows of prob_matrix
+    prob_matrix: <np.ndarray[float]> 2D matrix of probabilities. Normalised so that each row sums to 1.
+    """
+    n_x, n_y = prob_matrix.shape
+    n_l = partition_index
+    n_r = n_y - partition_index
+    return _mn_sparse_full_partitioned(
+        trials,
+        prob_matrix.data,
+        prob_matrix.indices,
+        prob_matrix.indptr,
+        (n_x, n_l),
+        (n_x, n_r),
     )
 
 
