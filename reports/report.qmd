@@ -42,8 +42,8 @@ pl.Config.set_tbl_hide_column_data_types(True)
 pl.Config.set_tbl_hide_dataframe_shape(True)
 
 sns.set_theme(style='ticks')
+sns.set_palette('colorblind')
 sns.set_context('paper')
-plt.style.use('tableau-colorblind10')
 ```
 
 # Key Points
@@ -436,16 +436,23 @@ To isolate the effect of the projections on the movement of patients, we can sim
 # simulation archives from run_zero*.py
 simulation_archives = {
     'temporal': '../zero_sims/temporal/sim_all_30s.h5',
-    'static': '../zero_sims/static/sim_all_30s.h5',
-    'snapshot': '../zero_sims/snapshot/sims_with_30seeds_pseudocap.h5',
+    'static': '../zero_sims/static/sim_all_30s_fixed_axis.h5',
+    'snapshot': '../zero_sims/snapshot/sims_with_30seeds_pseudocap_fixed_axis.h5',
     'naive_static': '../zero_sims/naive_static/sim_all_30s.h5',
+}
+
+metrics_archives = {
+    'temporal': '../zero_sims/temporal/metrics_30s.parquet',
+    'static': '../zero_sims/static/metrics_30s_fa.parquet',
+    'snapshot': '../zero_sims/snapshot/metrics_30s_fa.parquet',
+    'naive_static': '../zero_sims/naive_static/metrics_30s.parquet'
 }
 
 processed_results = {}
 
 # metrics precomputed in compute_summary_stats.ipynb
-for label, archive in simulation_archives.items():
-        processed_results[label] = pl.read_parquet(Path(archive).with_name('metrics_30s.parquet'))
+for label, archive in metrics_archives.items():
+        processed_results[label] = pl.read_parquet(archive)
 ```
 
 

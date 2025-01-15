@@ -78,7 +78,8 @@ def multi_infomap(G_base: str | Path, conv=True):
 
 
 def heat_wavelet(G: ig.Graph, tau=1.2, normalised=True):
-    assert not G.is_directed(), "Laplacian not defined for directed networks"
+    if G.is_directed():
+        raise ValueError("Laplacian not defined for directed networks")
     A = np.array(G.get_adjacency().data)
     D = np.diag(np.array(G.degree()))
     W = 1 / np.sqrt(D)

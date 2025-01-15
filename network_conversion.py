@@ -7,7 +7,7 @@ import numba as nb
 from scipy import sparse
 import polars as pl
 import igraph as ig
-from typing import Mapping, Hashable, Sequence, Any, SupportsFloat
+from typing import Mapping, Hashable, Optional, Sequence, Any, SupportsFloat
 from functools import lru_cache
 from pathlib import Path
 
@@ -88,7 +88,7 @@ class ColumnDict(dict):
 
 def transition_matrix_from_graph(
     graph: ig.Graph,
-    ordering: SupportsGet | None = None,
+    ordering: Optional[SupportsGet] = None,
     scaling_per_node: Sequence | None = None,
     global_scaling: float = 1,
     ordering_key: Hashable | None = None,

@@ -8,10 +8,10 @@ import hitting_markov as hit
 from realisation_summary_stats import hitting_time
 
 ## NAIVE STATIC MODEL
-def compute_static_hitting_times(
+def get_naive_static_Q(
     graph_file = "./concordant_networks/shuf_static_network.graphml",
-    scaling = (10*365),
-    plot = False,
+    size_file="./concordant_networks/size_14.csv",
+    time_span = (10*365),
 ):
 
     G = ig.Graph.Read(graph_file)
@@ -19,19 +19,32 @@ def compute_static_hitting_times(
     graph_map = {int(k):v for k,v in zip(G.vs['name'], G.vs['id'])}
     sorted_graph_map = {k: graph_map[k] for k in sorted(graph_map.keys())}
     graph_ordering = ntc.Ordering(sorted_graph_map)
-    N = len(graph_ordering.sizes)
+
+    size_order = ntc.Ordering.from_file(size_file)
+    sizes = np.array([size_order(i) for i in graph_ordering.order])
 
     # we use the naive construction, since the null set (never return) version creates 
     # results that misrepresent the amount of time it takes to move through the system
     # We also use the internal function in order to directly pass the transition matrix 
     # constructed, as opposed to the non-scaled weighted adjacency matrix
     T = ntc.transition_matrix_from_graph(G, 
-                                        ordering=graph_ordering, 
-                                        global_scaling=scaling, 
+                                        ordering=graph_ordering,
+                                        scaling_per_node=sizes,
+                                        global_scaling=time_span,
                                         ordering_key='name', 
-                                        adjacency_attribute='weight'
+                                        adjacency_attribute='weight',
                                         )
     Q = hit._Q_mat_naive(T)
+
+    return Q
+
+
+def compute_static_hitting_times(
+    Q,
+    plot = False,
+):
+
+    N, _ = Q.shape
 
     ## I wish I could speed this up, but I think we need the absorption
     hitting_times = [
@@ -47,10 +60,10 @@ def compute_static_hitting_times(
         plt.xlabel('to')
         plt.ylabel('from')
 
-        ax = axim.axes
+        ax = [axim.axes]
 
     # plt.savefig("zstatic_no_home_time.png", dpi=360)
-    return hitting_time_arr, [ax]
+    return hitting_time_arr, ax
 
 
 ### STATIC MODEL WITH DELAYED RETURN
@@ -206,7 +219,8 @@ if __name__ == "__main__":
 def create_cached_hitting_times(
     fpath = "hitting_time_analysis/hitting_time_arrays.h5"
 ):
-    hitting_time_arr, _ = compute_static_hitting_times()
+    naive_static_Q = get_naive_static_Q()
+    hitting_time_arr, _ = compute_static_hitting_times(naive_static_Q)
     zhitting_time_arr, _ = compute_delayed_static_hitting_times()
 
     import h5py

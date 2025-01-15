@@ -124,6 +124,8 @@ class RealisationArray():
                 g.attrs['seed'] = rlz['seed']
                 g.attrs['simdate'] = rlz['simdate']
                 g.attrs['simtime'] = rlz['simtime']
+                if 'delay' in rlz:
+                    g.attrs['delay'] = rlz['delay']
                 rfl = self.realisations[rlz['row_nr']]
                 with np.load(rfl) as ifp:
                     tarr = ifp.get('ts') or ifp['t']
