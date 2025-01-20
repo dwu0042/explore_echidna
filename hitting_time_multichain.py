@@ -6,6 +6,8 @@ import numpy as np
 from scipy import linalg
 from scipy import integrate
 
+from typing import Iterable
+
 def construct_surival_ode(Q, index=-1):
     """Implement the problem u'(t) = Q_{A^cA^c} u(t)"""
     # remove row and column
@@ -49,3 +51,15 @@ def solve_survival_ode(Nchains, Q, index=-1, precision=30):
 
     return np.dot(gl_weights, survival_sol.y.T ** Nchains)
 
+def conform_compacted_array(hitting_arr, idx):
+    N = np.shape(hitting_arr)[0]
+    full_arr = np.zeros(N+1)
+    full_arr[:idx] = hitting_arr[:idx]
+    full_arr[idx+1:] = hitting_arr[idx:]
+    return full_arr
+
+def stitch_hitting_arrays(hitting_arrs: Iterable):
+    return np.vstack([
+        conform_compacted_array(arr, idx)
+        for idx, arr in enumerate(hitting_arrs)
+    ]).T

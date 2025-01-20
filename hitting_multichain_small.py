@@ -2,7 +2,7 @@ import time
 import numpy as np
 
 import hitting_time_multichain as hmch
-import hitting_markov as hmkv
+import hitting_time_analysis as htan
 
 def tictoc(tic):
     toc = time.perf_counter()
@@ -30,5 +30,9 @@ for NN in range(1, 10):
 
 hit_arr = np.vstack([np.hstack(x) for x in hittings])
 
-print(hit_arr)
+# compare against the standard formulation
+standard_single_hitting = htan.compute_static_hitting_times(sample_graph_Q, plot=False)
+
+print(hittings[0])
+print(standard_single_hitting)
 
