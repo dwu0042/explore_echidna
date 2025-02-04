@@ -73,3 +73,45 @@ we now have a straightforward strategy for computing the expected hitting times
   - This involves computing M locations to evaluate u(t) at, and weighted sum with M weights
   - We can compute $u(t)$ numerically using numerical integration
     - This should be relatively straightforward (a 400-D linear ODE)
+
+22 Jan 2025
+===========
+
+Gauss-Laguerre does not converge well when the decay rate is slow.
+We can fix this with a linear rescaling of time, should be able to detect via the eigenvalues of the reduced Q matrix
+
+- Roughly, for eigenvalues $-\lambda_i$ and eigenvectors $v_i$, the characteristic time scales as 
+  $$\max \Bigg[\frac{\log(v_i) - \log(q)}{\lambda_i}\Bigg]$$
+  where $q$ is some quantile.
+  For now, we can choose $q$ arbitrary, but we might want to have a guess at what $q$ results in a stable convergence of the G-Lgg integration
+
+24 Jan 2025
+===========
+
+We can perform an explicit expansion of the exact solution, and use decomposition to get the exact coefs and function params.
+This allows us to get an exact solution in time prop to the number of chains factorial (? need to check scaling) + size fo the problem (for the eigen problem)
+
+[26 Jan] Looks like scaling is a problem here... (50 x 30 is not really competing in finite time)
+
+26 Jan 2025
+===========
+
+Did a bit of experimenting with scaling.
+We actually see that $v_i$ has little to no impact on the effect of scaling when we do
+
+$$\int_o^\infty v_i e^{-\lambda_i t} = s\int_o^\infty v_i e^{-\lambda_i st}$$
+
+since the integral evaluates to $v_i / \lambda$. I think I may have made an error when deriving the expression, and didn't cancel a factor of $v_i$ when dealing with the RHS boundary (which is probably something like $q \times v_i$)
+
+Any way, it looks like choosing $q \approx 0.05$ works pretty well on a single term. Checking for multiple terms now.
+
+[Additional thought] is that the exponentiation by $N$ does change the characteristic time. The problem here is determining a good characteristic time to choose. I guess since $N$ will multiply with the exponential, that simply choosing the standrad characteristic time $\times N$ will work...?
+
+One thing we need to consider is that at long time, the smallest decay rate will dominate, regardless of choice of $v_i$.
+
+[28/01] We have learnt that:
+- as $v_i$ increases, the window does not really change.
+- as $1/\lambda$ increases, the window of appropriate $s$ moves to the right. 
+- as the precision increases, the width of the window increases, centred on the centre of the window.
+- as we include more terms, the window decreases in size. Using q=0.05, and log(q)/lambda doesn't seem to work very well any more.
+- 

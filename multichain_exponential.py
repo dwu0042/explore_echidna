@@ -3,6 +3,36 @@ from scipy import linalg
 from scipy.special import factorial
 
 
+from itertools import combinations_with_replacement
+from collections import Counter
+
+def generate_multinomial_exponents(num_terms, total_degree):
+    """
+    Generate all combinations of exponents for a multinomial expansion.
+
+    Args:
+        num_terms (int): Number of terms (p_i).
+        total_degree (int): Total degree of the expansion (N).
+
+    Returns:
+        list of tuples: Each tuple represents a valid exponent combination.
+    """
+    # Generate combinations with replacement for the total degree
+    # represented as positions of "balls in bins".
+    combinations = combinations_with_replacement(range(num_terms), total_degree)
+    
+    # Convert the combinations into exponent tuples
+    exponents = []
+    for combination in combinations:
+        # Count occurrences of each index to form the exponent tuple
+        exponent = [0] * num_terms
+        counts = Counter(combination)
+        for term, count in counts.items():
+            exponent[term] = count
+        exponents.append(tuple(exponent))
+    
+    return exponents
+
 def without(Q, index=-1):
     return np.delete(np.delete(Q, index, axis=0), index, axis=1)
 
