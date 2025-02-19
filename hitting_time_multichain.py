@@ -46,13 +46,13 @@ def solve_survival_ode(Q, index=-1, locations=None, endpoint=200):
     )
 
 
-def compute_multichain_hitting_time(Nchains, Q, index=-1, precision=30):
+def compute_multichain_hitting_time(Nchains, Q, index=-1, precision=30, scaling=1.0):
     roots, weights = determine_laguerre_roots_and_weights(precision)
     gl_weights = weights * np.exp(roots)
 
-    survival_sol = solve_survival_ode(Q, index=index, locations=roots)
+    survival_sol = solve_survival_ode(Q, index=index, locations=(roots * scaling))
 
-    return np.dot(gl_weights, survival_sol.y.T**Nchains)
+    return scaling * np.dot(gl_weights, survival_sol.y.T**Nchains)
 
 
 def conform_compacted_array(hitting_arr, idx):
@@ -68,10 +68,15 @@ def stitch_hitting_arrays(hitting_arrs: Iterable):
         [conform_compacted_array(arr, idx) for idx, arr in enumerate(hitting_arrs)]
     ).T
 
-def compute_all_multichain_hittings(Nchains, Q, precision=30):
+def compute_all_multichain_hittings(Nchains, Q, precision=30, scaling=1.0):
     return stitch_hitting_arrays(
         [
-            compute_multichain_hitting_time(Nchains, Q, index=idx, precision=precision)
+            compute_multichain_hitting_time(
+                Nchains, 
+                Q, index=idx, 
+                precision=precision, 
+                scaling=scaling
+            )
             for idx in range(Q.shape[0])
         ]
     )

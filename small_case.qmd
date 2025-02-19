@@ -1,0 +1,123 @@
+---
+title: "Small Case: Checking Hitting Times in the Year of Our Lord"
+format:
+  html:
+    code-fold: true
+---
+
+```{python Imports} 
+import numpy as np
+import networkx as nx
+import igraph as ig
+
+import hitting_markov as hmk
+import hitting_time_analysis as ht
+import hitting_time_multichain as mch
+import network_conversion as ntc
+
+from matplotlib import pyplot as plt
+```
+
+Here we want to check that our simulations and analytical results have parity.
+
+The idea is to setup a small network that has at least one very rare link, and compute the hitting times analytically for N=[1, 5, 10, 30] individuals, and also simualte for those cases.
+
+We generate a small 5-node directed, weighted network.
+```{python}
+G = ig.Graph(
+  edges = [
+    (0, 1),
+    (0, 3),
+    (1, 2),
+    (1, 3),
+    (2, 0),
+    (3, 2),
+    (3, 4),
+    (4, 3),
+  ],
+  directed = True,
+  vertex_attrs = {
+    'name': list('ABCDE'),
+    'capacity': [10, 12, 20, 10, 3],
+  },
+  edge_attrs = {
+    'weight': [
+      30, # (0, 1),
+      5, # (0, 3),
+      5, # (1, 2),
+      10, # (1, 3),
+      15, # (2, 0),
+      12, # (3, 2),
+      6, # (3, 4),
+      1, # (4, 3),
+    ]
+  }
+)
+
+G.write_graphml("small_case/graph.graphml")
+
+fig, ax = plt.subplots()
+ig.plot(
+  G,
+  target = ax,
+  vertex_label=G.vs['name'],
+  vertex_color='lightcyan',
+  vertex_size=50,
+  edge_label=G.es['weight'],
+  edge_background='white',
+  edge_label_dist=0.7,
+)
+```
+
+We compute Q, the transition matrix.
+We extract T, the base transition matrix, by allowing defaults of using the vertex indices as the ordering, since we have the sizes attached to the graph.
+```{python}
+T = ntc.transition_matrix_from_graph(
+  graph=G,
+  scaling_per_node=G.vs['capacity'],
+  global_scaling=28,
+  adjacency_attribute='weight'
+)
+Q = hmk._Q_mat_naive(T)
+```
+
+This is our ground truth, the hitting time for N=1, as extracted from the linear system that results.
+```{python}
+def draw_ecdf(values, ax=None, **kwargs):
+  value_arr = np.sort(values.flatten())
+  ecdf_quantiles = np.linspace(0, 1, len(value_arr), endpoint=False)
+
+  if ax is None:
+    fig, ax = plt.subplots()
+  ax.step(value_arr, ecdf_quantiles, **kwargs)
+  return ax
+```
+
+```{python}
+hitting_time_one,_ = ht.compute_static_hitting_times(Q)
+draw_ecdf(hitting_time_one)
+```
+
+Here we use a scaling=100 to get proper convergence of the integrals. This value is relatively arbitrary, but it must be >1 since there are slow species that ruin our time.
+```{python}
+hitting_time_numerical = mch.compute_all_multichain_hittings(1, Q=Q, scaling=100)
+ax = draw_ecdf(hitting_time_numerical)
+```
+
+These are our numerical base results. We "hope" they are correct (insofar as numerical error)
+```{python}
+ht_numers = {
+  n_chains: mch.compute_all_multichain_hittings(n_chains, Q=Q, scaling=100)
+  for n_chains in [1, 5, 10, 30]
+}
+
+fig, ax = plt.subplots()
+for k, v in ht_numers.items():
+  draw_ecdf(v, ax=ax, label=f"N={k}")
+plt.legend()
+```
+
+We can then simulate on this naive static network.
+We will offload this work to another script, mostly because the simulations take a significant amount of time.
+
+![Script]()
