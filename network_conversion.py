@@ -54,16 +54,18 @@ class Ordering:
         """returns the size of the object"""
         idx = self[key]
         return self.sizes[idx]
-    
+
     def todf(self):
         """Return the dataframe that corresponds to the ordering
         Has columns 'hospital', 'index', and 'size'
         """
-        return pl.from_dict({
-            'hospital': self.order,
-            'index': np.arange(len(self.order)),
-            'size': self.sizes
-        })
+        return pl.from_dict(
+            {
+                "hospital": self.order,
+                "index": np.arange(len(self.order)),
+                "size": self.sizes,
+            }
+        )
 
 
 class ColumnDict(dict):
@@ -136,7 +138,10 @@ class Converter(abc.ABC):
 
 class TemporalNetworkConverter(Converter):
     def __init__(
-        self, network: ig.Graph, ordering: Ordering, weight: str='weight',
+        self,
+        network: ig.Graph,
+        ordering: Ordering,
+        weight: str = "weight",
     ):
         """Extracts transition matrix from a network"""
         self.ordering = ordering
@@ -178,7 +183,7 @@ class TemporalNetworkConverter(Converter):
     @property
     def DIMENSIONS(self):
         return {"NLOC": self.NLOC, "NT": self.NT}
-    
+
     @classmethod
     def from_file(cls, network_filepath: str | PathLike, **kwargs):
         graph = gim.make_graph(network_filepath)
@@ -193,7 +198,9 @@ class TemporalNetworkConverter(Converter):
         mapped_parameters = dict()
 
         mapped_parameters["beta"] = parameters["beta"]
-        mapped_parameters["prob_final_stay"] = parameters["prob_final_stay"].reshape((-1, 1))
+        mapped_parameters["prob_final_stay"] = parameters["prob_final_stay"].reshape(
+            (-1, 1)
+        )
 
         movements_out = self.A.sum(axis=1)
         M_mat = movements_out.reshape((self.NLOC, self.NT), order="F")
@@ -205,14 +212,14 @@ class TemporalNetworkConverter(Converter):
         ).tocsr()
 
         return mapped_parameters
-    
+
     def delay(self, n: int):
         """Reformats internal attributes so that the starting time is delayed by n time steps"""
 
         self.NT -= n
 
         nidx = int(n * self.NLOC)
-        self.A = self.A[nidx:, nidx:] # CSR sparse -> CSR sparse
+        self.A = self.A[nidx:, nidx:]  # CSR sparse -> CSR sparse
 
 
 class SnapshotWithHomeConverter(Converter):
@@ -235,17 +242,22 @@ class SnapshotWithHomeConverter(Converter):
         self.snapshot_times = sorted(network_snapshots.keys())
         if infer_durations:
             base_snapshot_durations = np.diff(self.snapshot_times)
-            base_duration_map = {k:d for k,d in zip(self.snapshot_times, base_snapshot_durations)}
+            base_duration_map = {
+                k: d for k, d in zip(self.snapshot_times, base_snapshot_durations)
+            }
 
         if shuffle_snapshots:
             random.shuffle(self.snapshot_times)
 
         # infer the duration scaling for each snapshot
         if infer_durations:
-            self.snapshot_durations = [base_duration_map.get(k, 1) for k in self.snapshot_times]
+            self.snapshot_durations = [
+                base_duration_map.get(k, 1) for k in self.snapshot_times
+            ]
         else:
-            self.snapshot_durations = [network_snapshots[k]['duration'] for k in self.snapshot_times]
-        
+            self.snapshot_durations = [
+                network_snapshots[k]["duration"] for k in self.snapshot_times
+            ]
 
         # construct raw transition matrices that are to be parsed into weighti ng matrices
         self.raw_transition_matrices = {
@@ -380,7 +392,11 @@ class StaticConverter(Converter):
     }
 
     def __init__(
-        self, network: ig.Graph, ordering: Ordering, time_span: SupportsFloat | None = None, purge_selfloops=False
+        self,
+        network: ig.Graph,
+        ordering: Ordering,
+        time_span: SupportsFloat | None = None,
+        purge_selfloops=False,
     ):
         self.ordering = ordering
 
@@ -416,9 +432,7 @@ class StaticConverter(Converter):
         self.compute_weighting_matrices(purge_selfloops=purge_selfloops)
 
     @classmethod
-    def from_file(
-        cls, file: PathLike, ordering: Ordering, *args, **kwargs
-    ):
+    def from_file(cls, file: PathLike, ordering: Ordering, *args, **kwargs):
         network = ig.Graph.Read(file)
         return cls(network, ordering, *args, **kwargs)
 
@@ -474,7 +488,10 @@ class StaticConverter(Converter):
 class NaiveStaticConverter(Converter):
 
     def __init__(
-        self, network: ig.Graph, ordering: Ordering, time_span: SupportsFloat | None=None
+        self,
+        network: ig.Graph,
+        ordering: Ordering,
+        time_span: SupportsFloat | None = None,
     ):
         self.ordering = ordering
 
@@ -484,8 +501,8 @@ class NaiveStaticConverter(Converter):
             self.time_span = network["time_span"]
         else:
             raise ValueError("No time span provided")
-        
-        self.transition_matrix =  transition_matrix_from_graph(
+
+        self.transition_matrix = transition_matrix_from_graph(
             graph=network,
             ordering=self.ordering,
             scaling_per_node=self.ordering.sizes,
@@ -496,9 +513,7 @@ class NaiveStaticConverter(Converter):
         )
 
     @classmethod
-    def from_file(
-        cls, file: PathLike, ordering: Ordering, *args, **kwargs
-    ):
+    def from_file(cls, file: PathLike, ordering: Ordering, *args, **kwargs):
         network = ig.Graph.Read(file)
         return cls(network, ordering, *args, **kwargs)
 
@@ -513,7 +528,13 @@ class NaiveStaticConverter(Converter):
         observed_departure_rate = self.transition_matrix.sum(axis=1).reshape((-1, 1))
         mapped_parameters["gamma"] = observed_departure_rate / (1 - p)
 
-        mapped_parameters["transition_matrix"] = self.transition_matrix / mapped_parameters['gamma']
+        raw_transformed_transitions = (
+            self.transition_matrix / mapped_parameters["gamma"]
+        )
+        # fix problems where gamma is zero (isolated node)
+        raw_transformed_transitions[np.isnan(raw_transformed_transitions)] = 0.0
+        no_gamma = np.argwhere(mapped_parameters['gamma'].flatten() == 0.0)
+        raw_transformed_transitions[no_gamma, no_gamma] = 1.0
+        mapped_parameters["transition_matrix"] = raw_transformed_transitions
 
         return mapped_parameters
-
