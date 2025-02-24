@@ -513,7 +513,7 @@ class NaiveStaticConverter(Converter):
         observed_departure_rate = self.transition_matrix.sum(axis=1).reshape((-1, 1))
         mapped_parameters["gamma"] = observed_departure_rate / (1 - p)
 
-        mapped_parameters["transition_matrix"] = self.transition_matrix
+        mapped_parameters["transition_matrix"] = self.transition_matrix / mapped_parameters['gamma']
 
         return mapped_parameters
 
