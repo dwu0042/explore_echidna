@@ -142,14 +142,43 @@ aggregated_metrics = metrics.unpivot(
 max_value_plus_one = aggregated_metrics.select(pl.col('hitting_time').max()).item() + 1
 cleaned_metrics = aggregated_metrics.fill_nan(max_value_plus_one).fill_null(max_value_plus_one)
 
-ax = sns.ecdfplot(cleaned_metrics, x='hitting_time', hue='nchains', palette=colormaps.get('jet'))
+fig, axz = plt.subplots(nrows=2)
+axs = axz.flatten()
 
-for k, v in ht_numers.items():
-  draw_ecdf(v, ax=ax, label=f"N={k}")
+for ax in axs:
+  sns.ecdfplot(
+    cleaned_metrics, 
+    x='hitting_time', 
+    hue='nchains', 
+    palette=colormaps.get('jet'),
+    ax=ax
+  )
 
-ax.set_xscale('log')
-ax.set_xlim(left=0.3, right=3e3)
+  for k, v in ht_numers.items():
+    draw_ecdf(v, ax=ax, label=f"N={k}")
+
+axs[1].set_xlim(-10, 100)
+
 ```
 
 We see relatively good agreement here.
-<!-- We detected a bug in this sequence, where the silent graceful failure of numpy.random.Generator.multinomial causes a bug where the transition probabilities that were not normalised correctly earlier cause high probability moves to the "last" node. -->
+
+### Aside: the Bug
+
+We detected a bug in this work, where the silent graceful failure of numpy.random.Generator.multinomial causes a bug where the transition probabilities that were not normalised correctly earlier cause high probability moves to the "last" node. 
+
+This causes the ECDFs to clump, and be differentiated by their hitting probabilities.
+
+```{python}
+bug_metrics = pl.read_parquet("small_case/metrics_prebug.parquet")
+hitting_time_cols = pl.selectors.starts_with('hitting_time_')
+aggregated_bugmetrics = bug_metrics.unpivot(
+  on=hitting_time_cols,
+  index=['nchains','seed',],
+  variable_name='target',
+  value_name='hitting_time',
+)
+cleaned_bugmetrics = aggregated_bugmetrics.fill_nan(max_value_plus_one).fill_null(max_value_plus_one)
+
+ax = sns.ecdfplot(cleaned_bugmetrics, x='hitting_time', hue='nchains', palette=colormaps.get('jet'))
+```
