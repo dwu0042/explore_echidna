@@ -1,0 +1,94 @@
+---
+title: Examining whether the snapshot return mechanism is correct
+---
+
+```{python}
+import numpy as np
+from matplotlib import pyplot as plt
+from scipy import stats
+from collections import Counter
+
+rng = np.random.default_rng()
+```
+
+We want to investigate whether the snapshot return mechanism produces the correct return time distribution.
+
+Currently, because we do not label individuals, all individuals in the same state are treated the same.
+This means that individuals in the "at home" bucket are all treated as if they have been there for some time.
+
+We model return (and the overall return rate) in the snapshot model by balancing the number of observed departures (to home) and arrivals (from home).
+
+We can check the concordance of this model with the temporal distribution by writing an individual based-simulation (or adapt our current simulation, where we now also  track marked individuals pretty explicitly)
+
+We will do this by modelling a single link (single we don't care about network effects), and sending individuals through this link indirectly.
+
+
+```{python}
+SNAPSHOT_DURATION = 14
+times = np.arange(0, 100)
+readmission_duration = lambda size=1: rng.lognormal(np.log(14), 0.5, size=size)
+
+base_population = 1000
+base_move_out = 200
+```
+
+```{python}
+movements_out = np.random.poisson(base_move_out, size=times.shape)
+
+movements_in = np.zeros_like(times)
+movement_dist = []
+for _t in times: # implictly this is also the index
+    move_times = np.round(readmission_duration(movements_out[_t]), 0).astype(int) + _t
+    valid_moves = move_times[move_times < np.max(times)]
+    movement_dist.extend(valid_moves)
+    if len(valid_moves) < 1:
+        continue
+    move_counter = Counter(valid_moves)
+    move_tos = np.array(list(move_counter.keys()))
+    move_counts = np.array(list(move_counter.values()))
+    movements_in[move_tos] += move_counts
+```
+
+Computing the transition matrices
+```{python}
+at_home = 0
+home_numbers = np.zeros_like(times)
+for _t in times:
+    at_home += movements_out[_t]
+    home_numbers[_t] = at_home
+    at_home -= movements_in[_t]
+
+inwards_transition_prob = movements_in / home_numbers
+
+outwards_transition_prob = movements_out / base_population
+```
+
+```{python}
+# create agents
+class Agent():
+    _place_map = ['hospital', 'home']
+    def __init__(self):
+        self.place = 0
+        self.go_home_time = np.nan
+        self.return_hospital_time = np.nan
+    
+    def __repr__(self) -> str:
+        return f"Agent()"
+
+    def __str__(self):
+        return f"Agent [{self.place} {self.go_home_time:.0f} {self.return_hospital_time:.0f}]"
+
+    @property
+    def duration(self):
+        return self.return_hospital_time - self.go_home_time
+    
+    def go_home(self, time):
+        self.go_home_time = time
+        self.place = 1
+    
+    def return_hospital(self, time):
+        self.return_hospital_time = time
+        self.place = 0
+
+agent_pool = set()
+home_pool = set()
