@@ -1,0 +1,303 @@
+---
+title: Comparing hitting times filtering by seed/target
+---
+
+The main aim is to construct a function that defines a quantifiable metric of whether a hitting time 
+eCDF is below or above another.
+
+This is to determine whether or not the hitting time distribution for X model is always "above" Y model; and also the extended question of whether X > Y > Z always. (or almost always)
+
+```{python}
+import numpy as np
+import polars as pl
+from scipy import stats
+from matplotlib import pyplot as plt
+import seaborn as sns
+import itertools
+
+from typing import Mapping
+```
+
+```{python}
+# going to steal from aggregated_compare.ipynb
+
+metrics_archives = {
+    'temporal': './zero_sims/temporal/metrics_30s.parquet',
+    'static': './zero_sims/static/metrics_30s_fa.parquet',
+    'snapshot': './zero_sims/snapshot/metrics_30s_fa.parquet',
+    'naive_static': './zero_sims/naive_static/metrics_30s.parquet',
+}
+
+raw_metrics = {
+  label: pl.read_parquet(archive) for label, archive in metrics_archives.items()
+}
+
+hitting_time_prefix = "hitting_time_"
+hitting_time_columns = pl.selectors.starts_with(hitting_time_prefix)
+```
+
+```{python}
+def add_ecdf(df: pl.DataFrame, name='eCDF'):
+  augmented_df = (
+    df
+    .sort('hitting_time', nulls_last=True)
+    .with_row_index(name=name)
+    .with_columns(pl.col(name) / pl.col(name).max())
+  )
+  return augmented_df
+
+aggregated_metrics = dict()
+for model, metrics in raw_metrics.items():
+  agg_df = (
+    metrics
+    .unpivot(
+      on=hitting_time_columns,
+      index='seed',
+      variable_name='target_name',
+      value_name='hitting_time',
+    )
+    .with_columns(
+      target=(
+        pl.col('target_name')
+        .str.strip_prefix('hitting_time_')
+        .str.to_integer()
+      )
+    )
+    .drop('target_name')
+    .sort('hitting_time', nulls_last=True)
+    .with_row_index(name='CDF')
+    .with_columns(
+      pl.col('CDF') / pl.col('CDF').max()
+    )
+  )
+  aggregated_metrics[model] = agg_df
+```
+
+```{python}
+sns.scatterplot(aggregated_metrics['temporal'], x='hitting_time', y='CDF', marker='.')
+```
+
+```{python}
+def hitting_time_curve(df, x='hitting_time', y='CDF', ax=None, **kwargs):
+  if ax is None:
+    _, ax = plt.subplots()
+  
+  hitting_time = df[x].to_numpy()
+  ecdf = df[y].to_numpy()
+
+  ax.plot(hitting_time, ecdf, **kwargs)
+
+  return ax
+```
+
+
+```{python}
+hitting_time_curve(aggregated_metrics['temporal'])
+```
+
+```{python}
+def partial_ecdf_plot(dfs: Mapping[str, pl.DataFrame], filter_fun: pl.Expr):
+  ax = None
+  for key, df in aggregated_metrics.items():
+    aug_df = add_ecdf(df.filter(filter_fun), name="partial eCDF")
+    ax = hitting_time_curve(aug_df, y='partial eCDF', ax=ax, label=key)
+  ax.legend()
+  return ax
+```
+
+```{python}
+partial_ecdf_plot(aggregated_metrics, pl.col('seed').eq(0))
+```
+
+I think the idea here will be to compare N-quantiles of the distribution curve
+
+```{python}
+base_quantiles = pl.from_dict(
+  {'quantile': np.linspace(0, 2900, 30)}
+)
+
+def quantile_metric(df: pl.DataFrame, quantiles=base_quantiles, cdf_col='CDF'):
+  searched = quantiles.join_asof(
+    df, 
+    left_on='quantile',
+    right_on='hitting_time', 
+  ).select('quantile', cdf_col)
+  
+  return searched
+
+def get_partial_quantiles(df: pl.DataFrame):
+  # compute partial eCDF
+  cdf_col = 'eCDF'
+  aug_df = add_ecdf(df, name=cdf_col)
+  # search quantiles
+  return quantile_metric(aug_df, cdf_col=cdf_col)
+```
+
+## Single seed test 
+
+Testing for seed = 42
+```{python}
+test_seed = 42
+
+qmets = {model: get_partial_quantiles(df.filter(pl.col('seed').eq(test_seed))) for model, df in aggregated_metrics.items()}
+
+qmet_agg = pl.concat([
+  df.with_columns(model=pl.lit(model))
+  for model, df in qmets.items()
+])
+
+qmet_matrix = qmet_agg.pivot(on='model', index='quantile', values='eCDF')
+```
+
+```{python}
+sns.scatterplot(qmet_agg, x='quantile', y='eCDF', hue='model')
+```
+
+
+First attempt: Cramer-von Mises . The problem here is that these goodness of fit criteria are two-sided, and we want a one-sided criterion.
+```{python}
+comb_symbol = "__x__"
+qmet_cramer = qmet_matrix.with_columns(
+  *(
+    ((pl.col(col1) - pl.col(col2))).alias(f"{col1}{comb_symbol}{col2}")
+    for col1, col2 in itertools.combinations(aggregated_metrics.keys(), 2)
+  )
+).select(pl.selectors.contains(comb_symbol)).sum().to_dicts()[0]
+```
+
+Second attempt was to compute P( X > Y ), but we have censored distributions, so this is hopeless.
+
+```{python}
+qmet_simple = qmet_matrix.with_columns(
+  *(
+    (pl.col('naive_static') - pl.col(col)).alias(f'naive_minus_{col}')
+    for col in aggregated_metrics.keys()
+  )
+).select(
+  pl.selectors.starts_with('naive_minus_').name.map(
+    lambda s: s.removeprefix('naive_minus_')
+  )
+).sum().to_dicts()[0]
+
+qmet_order = sorted(qmet_simple, key=qmet_simple.get)
+```
+
+### Whole of seed
+
+```{python}
+def filter_seed(df, seed):
+  return df.filter(pl.col('seed').eq(seed))
+
+def filter_target(df, target):
+  return df.filter(pl.col('target').eq(target))
+
+def q_simple_order(seed=None, target=None):
+
+  if seed is None and target is None:
+    raise ValueError("Must specify at least one of seed or target")
+  elif seed is None:
+    filterf = lambda df: filter_target(df, target)
+  elif target is None:
+    filterf = lambda df: filter_seed(df, seed)
+
+  qmets = {
+    model: get_partial_quantiles(filterf(df)) 
+    for model, df in aggregated_metrics.items()
+  }
+
+  qmet_agg = pl.concat([
+    df.with_columns(model=pl.lit(model))
+    for model, df in qmets.items()
+  ])
+
+  qmet_matrix = qmet_agg.pivot(on='model', index='quantile', values='eCDF')
+
+  qmet_simple = qmet_matrix.with_columns(
+    *(
+      (pl.col('naive_static') - pl.col(col)).alias(f'naive_minus_{col}')
+      for col in aggregated_metrics.keys()
+    )
+  ).select(
+    pl.selectors.starts_with('naive_minus_').name.map(
+      lambda s: s.removeprefix('naive_minus_')
+    )
+  ).sum().to_dicts()[0]
+
+  qmet_order = tuple(sorted(qmet_simple, key=qmet_simple.get))
+
+  return qmet_order
+```
+
+```{python}
+all_q_seed = {i: q_simple_order(seed=i) for i in aggregated_metrics['naive_static'].select(pl.col('seed').unique()).to_series().to_list()}
+
+all_q_targ = {i: q_simple_order(target=i) for i in aggregated_metrics['naive_static'].select(pl.col('target').unique()).to_series().to_list()}
+```
+
+
+
+
+```{python}
+levels = list(itertools.permutations(aggregated_metrics.keys()))
+levels_map = {s: i for i,s in enumerate(levels)}
+
+level_q_seed = [levels_map[all_q_seed[k]] for k in sorted(all_q_seed.keys())]
+# not using targ keys, since it includes the shitty 149
+level_q_targ = [levels_map[all_q_targ[k]] for k in sorted(all_q_seed.keys())] 
+```
+
+```{python}
+for lnm, llq in zip(('seed', 'target'), [level_q_seed, level_q_targ]):
+  plt.figure()
+  plt.title(lnm)
+  plt.plot(llq, '.')
+  yt = plt.gca().get_yticks()
+  plt.gca().set_yticklabels(
+    [levels[int(t)] if t < len(levels) else '' for t in yt]
+  );
+```
+
+Seeing if there is correlation between the ordering and the (estimated) size of the hospital. We know that this estimated size has an artificial lower bound of 5.
+```{python}
+sizes = pl.read_csv("concordant_networks/size_14.csv").sort('hospital').with_row_index(name='index')
+
+level_df = pl.from_dict({
+  'index': sorted(all_q_seed.keys()),
+  'seed_order': level_q_seed,
+  'targ_order': level_q_targ,
+  'seed_str': [all_q_seed[k] for k in sorted(all_q_seed.keys())],
+  'targ_str': [all_q_targ[k] for k in sorted(all_q_seed.keys())],
+})
+
+level_df = level_df.join(sizes, on='index')
+```
+
+```{python}
+sns.scatterplot(
+  level_df.select('index', 'seed_order', 'estimated_size'),
+  x='estimated_size',
+  y='seed_order',
+)
+```
+
+```{python}
+jj_level_df = level_df.select('seed_order', 'estimated_size').group_by(pl.all()).len().sort('len', descending=True).with_columns(pl.col('len').log(10).alias('loglen'))
+```
+
+```{python}
+nonstandard_order_df = level_df.filter(pl.col('seed_order').eq(21))
+xhosp = nonstandard_order_df.filter(pl.col('estimated_size').eq(pl.col('estimated_size').max())).select('index').item()
+
+partial_ecdf_plot(aggregated_metrics, pl.col('seed').eq(xhosp))
+```
+
+```{python}
+nonstandard_hosps = nonstandard_order_df.select('index').to_series().to_list()
+for hosp in nonstandard_hosps:
+
+  naive_hosp = add_ecdf(aggregated_metrics['snapshot'].filter(pl.col('seed').eq(hosp)), name='partialCDF')
+
+  maxv = naive_hosp.drop_nulls(pl.col('hitting_time')).select(pl.col('partialCDF').max()).item()
+
+  print(hosp, maxv)
+```

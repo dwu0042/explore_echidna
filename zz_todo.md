@@ -192,3 +192,48 @@ The amount of deviation, especially at small T is relatively negligible.
 A Taylor expansion about $t=0$ explains this:
 
 $dp/dt = T e ^ {-T * t} \implies p(t) \approx 0 + T*1 (t - 0) + \mathcal{O}(t^2) = T * t$
+
+
+---
+We are also going to perform small case on a home+static network. We are currently blocked by the hardcoding of some attributes.
+Like with naive static, we should either implement a function that accepts a given Graph and attr keys, or maybe even just accept some transition matrix components.
+
+27 Feb 2025
+===========
+
+We discovered last night that there is a nice-ish relationship between the variance of an RV and the survival function.
+
+$$Var[X] = 2 \int_0^\infty u S(u) du - \left[\int_0^\infty S(u) du\right] ^2$$
+
+I did a brief experiment last night on a v. small case, and it seems like the variance is quite large.
+
+We are also more interested in the distribution of the collection of RVs $\{X_{ij}\}$, i.e. the hitting time distribution. I guess that we cant really say much about this.
+I guess we could say that we are (uniformly) drawing a random item from the collection, so we might be able to get something there? 
+[gippity] Law of Total Variance 
+Var(X_n) = Mean of Variances + Variance of Means
+This is relatively computable.
+
+This is important when comparing our hitting time eCDF to the distribution of expectations of hitting times, since we aren;'t actually comparing the same random variables... (the eCDF is prob. closer to a Gaussian with mean and variance based on the above (samples from X_i)) -> actually, this is not the case, since the eCDF still kinda looks Exponential.
+
+4 March 2025
+============
+Wanting to make sure that the link times on the small case are representative of the "true" network.
+
+We should examine by seed node, how the various hitting time dists behave relative to each other.
+
+We could do this by checking different ts, or by checking the median hitting t.
+
+We should also do this per target node.
+
+
+6 Mar 2025
+==========
+
+Run the snapshot model with the static model as the snapshots (many times).
+I would have to change the rate parameter slightly.
+
+13 Mar 2025
+===========
+
+Looking at the movements, the static reaches equilibrium much faster than the snapshot.
+We should also check the temporal network

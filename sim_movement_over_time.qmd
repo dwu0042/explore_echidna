@@ -1,0 +1,120 @@
+---
+title: Movement in Simulations over Time
+---
+
+We want to see how much movement there is between home and hospital in each simulation.
+
+```{python}
+import h5py
+import polars as pl
+import numpy as np
+from matplotlib import pyplot as plt
+
+rng = np.random.default_rng(2025)
+```
+
+```{python}
+fh = h5py.File("zero_sims/snapshot/sims_with_30seeds_pseudocap_fixedaxis.h5")
+fh_grps = list(fh)
+
+test_index = rng.choice(fh_grps)
+test_grp = fh[test_index]
+
+data = {
+    k: np.array(v[:], dtype=float)
+    for k,v in test_grp.items()
+}
+```
+
+```{python}
+def group_window(arr: np.ndarray, W: int):
+    return arr.reshape((-1, W)).sum(axis=1)
+
+WINDOW = 10
+
+plt.plot(data['ts'][:-1:WINDOW], group_window(data['mover_out'].sum(axis=1), WINDOW))
+plt.plot(data['ts'][:-1:WINDOW], group_window(data['mover_in'].sum(axis=1), WINDOW))
+```
+
+```{python}
+fh_static = h5py.File("zero_sims/static/sim_all_30s_fixed_axis.h5")
+xi_static = rng.choice(list(fh_static))
+data_static = {
+    k: np.array(v[:], dtype=float) 
+    for k,v in fh_static[xi_static].items()
+}
+
+WINDOW = 10
+
+plt.plot(
+    data_static['ts'][:-1:WINDOW], 
+    group_window(data_static['mover_out'].sum(axis=1), WINDOW)
+)
+
+plt.plot(
+    data_static['ts'][:-1:WINDOW], 
+    group_window(data_static['mover_in'].sum(axis=1), WINDOW)
+)
+```
+
+
+
+... want to look at the departure rate of the first snapshot, and see the distrigubtion. Looks very sparse for snapshot 0. Of 4299 edges, we get 4239 edges with weight < 19, 469 with 0 departure (and thus only direct movement). Note that there are 338^2 possible edges.
+
+
+```{python}
+import igraph as ig
+
+G = ig.Graph.Read("conc_tempo_14_detailed/0000.graphml")
+S = ig.Graph.Read("concordant_networks/trimmed_static_base_1_threshold_4.graphml")
+```
+
+```{python}
+snapshot_df = pl.from_dict(
+    {
+        'departures': G.es['departures'],
+        'arrivals': G.es['arrivals'],
+        'source': G.es['source'],
+        'target': G.es['target'],
+    }
+).cast(pl.Int64)
+
+static_df = pl.from_dict(
+    {
+        'indirect': S.es['indirect_weight'],
+        # 'link_time': S.es['link_time'],
+        'source': S.es['source_loc'],
+        'target': S.es['dest_loc'],
+    }
+).cast(pl.Int64)
+
+size_df = pl.read_csv("concordant_networks/size_14.csv")
+
+snapshot_df = snapshot_df.join(size_df, left_on='source', right_on='hospital')
+static_df = static_df.join(size_df, left_on='source', right_on='hospital')
+
+snapshot_df = snapshot_df.with_columns(dep_rate = pl.col('departures').cast(pl.Float64) / pl.col('estimated_size') / 14)
+static_df = static_df.with_columns(dep_rate = pl.col('indirect').cast(pl.Float64) / pl.col('estimated_size') / S['time_span'])
+
+dep_rates = pl.concat([
+    snapshot_df
+        .with_columns(model=pl.lit('snapshot'))
+        .select('dep_rate', 'source', 'target', 'model'), 
+    static_df
+        .with_columns(model=pl.lit('static'))
+        .select('dep_rate', 'source', 'target', 'model')
+])
+
+
+```
+```{python}
+hist_opts = {
+    'histtype': 'step',
+    'bins': 31,
+    'density': True
+}
+for name, arr in zip(['snapshot', 'static'], [snapshot_moves, static_moves]):
+    plt.hist(arr, **hist_opts, label=name)
+
+plt.yscale('log')
+plt.legend()

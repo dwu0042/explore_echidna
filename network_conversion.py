@@ -397,6 +397,7 @@ class StaticConverter(Converter):
         ordering: Ordering,
         time_span: SupportsFloat | None = None,
         purge_selfloops=False,
+        ordering_key="node",
     ):
         self.ordering = ordering
 
@@ -413,7 +414,7 @@ class StaticConverter(Converter):
                 ordering=self.ordering,
                 scaling_per_node=self.ordering.sizes,
                 global_scaling=self.time_span,
-                ordering_key="node",
+                ordering_key=ordering_key,
                 adjacency_attribute=adjkey,
                 matrix_size=len(self.ordering.order),
             )
@@ -422,7 +423,7 @@ class StaticConverter(Converter):
         self.raw_transition_matrices["link_time"] = transition_matrix_from_graph(
             graph=network,
             ordering=self.ordering,
-            ordering_key="node",
+            ordering_key=ordering_key,
             adjacency_attribute="link_time",
         )
 

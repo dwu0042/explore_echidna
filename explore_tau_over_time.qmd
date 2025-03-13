@@ -1,0 +1,45 @@
+---
+title: Exploring the distribution of $\tau$ over time
+execute:
+  echo: false 
+---
+
+We want to explore the distribution of $\tau$, the interadmission time, as a function of the time that an individual leaves hospital.
+
+```{python}
+import polars as pl
+from matplotlib import pyplot as plt
+import seaborn as sns
+from pathlib import Path
+
+import graph_importer as gim
+import tempograph_extractor as tge
+
+basepath = Path(".")
+
+sns.set_context('talk')
+sns.set_style("ticks")
+sns.set_palette("colorblind")
+```
+
+We load in the 1-day discretisation for temporal fidelity 
+
+```{python}
+#| echo: false
+CACHE = True
+if not CACHE:
+  G = gim.make_graph((basepath / "concordant_networks/temponet_1_365.lgl").absolute().as_posix())
+  edge_df = tge.extract_edge_df(G)
+  tau_series = tge.pull_series_tau_dist(edge_df)
+  tau_dists = tge.compute_tau_dists(tau_series)
+  clean_tau_dists = tau_dists.drop_nans()
+else:
+  clean_tau_dists = pl.read_csv(basepath / "concordant_networks/analyses/tau_dists.csv").drop_nans()
+```
+
+```{python}
+fig, axs = plt.subplots(nrows=2, sharex=True)
+axz = axs.flatten()
+sns.scatterplot(clean_tau_dists, x='time', y='slope', ax=axz[0])
+sns.scatterplot(clean_tau_dists, x='time', y='intercept', ax=axz[1])
+```

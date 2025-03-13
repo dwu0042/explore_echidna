@@ -1,0 +1,54 @@
+---
+title: link_time regression
+---
+
+```{python}
+import igraph as ig
+from matplotlib import pyplot as plt
+from scipy import stats, optimize
+import numpy as np
+```
+
+
+```{python}
+B = ig.Graph.Read("concordant_networks/trimmed_static_base_1_threshold_4.graphml")
+
+direct = np.array(B.es['direct_weight'])
+indirect = np.array(B.es['indirect_weight'])
+link_time = np.array(B.es['link_time'])
+
+plt.loglog(indirect, link_time, '.')
+plt.xlabel('Indirect weight')
+plt.ylabel('Link Time')
+```
+
+```{python}
+valid = np.isfinite(link_time)
+
+# transfrom
+log_link_time = np.log(link_time[valid])
+log_indirect = np.log(indirect[valid])
+
+# estim mean
+log_link_mean = np.mean(log_link_time)
+
+residuals = log_link_time - log_link_mean
+composed_variable = log_indirect * residuals
+
+est_mean = np.mean(composed_variable)
+est_std = np.std(composed_variable)
+
+plt.plot(log_indirect, composed_variable, '.')
+```
+
+```{python}
+rng = np.random.default_rng()
+
+indirect_values = np.array([250, 30, 40, 70, 110, 100, 40, 5])
+composed_draws = rng.normal(est_mean, est_std, size=indirect_values.shape)
+drawn_link_times = np.exp(
+    (composed_draws / np.log(indirect_values)) + log_link_mean
+) / 12 # for time unit consistency
+
+print(drawn_link_times)
+```
