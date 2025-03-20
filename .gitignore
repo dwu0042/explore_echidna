@@ -4,6 +4,7 @@
 .vscode
 **__pycache__
 .ruff_cache
+.jupyter_cache
 
 # project-specific folders
 old_**/
