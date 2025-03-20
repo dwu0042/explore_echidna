@@ -5,6 +5,7 @@ format:
     code-fold: true
 ---
 
+# Checking hitting Times: Naive Static Network
 ```{python Imports} 
 import numpy as np
 import networkx as nx
@@ -15,6 +16,7 @@ import hitting_markov as hmk
 import hitting_time_analysis as ht
 import hitting_time_multichain as mch
 import network_conversion as ntc
+import netsim_summariser as summ
 
 from matplotlib import pyplot as plt, colormaps
 import seaborn as sns
@@ -22,11 +24,11 @@ import seaborn as sns
 
 Here we want to check that our simulations and analytical results have parity.
 
-The idea is to setup a small network that has at least one very rare link, and compute the hitting times analytically for N=[1, 5, 10, 30] individuals, and also simualte for those cases.
+The idea is to setup a small network that has at least one very rare link, and compute the hitting times analytically for N=[1, 5, 10, 30] individuals, and also simulate for those cases.
 
 We generate a small 5-node directed, weighted network.
 ```{python}
-G = ig.Graph(
+graph_parameters = dict( 
   edges = [
     (0, 1),
     (0, 3),
@@ -55,6 +57,7 @@ G = ig.Graph(
     ]
   }
 )
+G = ig.Graph(**graph_parameters)
 
 G.write_graphml("small_case/graph.graphml")
 
@@ -109,9 +112,10 @@ ax = draw_ecdf(hitting_time_numerical)
 
 These are our numerical base results. We "hope" they are correct (insofar as numerical error)
 ```{python}
+chain_range = [1, 5, 10, 30]
 ht_numers = {
   n_chains: mch.compute_all_multichain_hittings(n_chains, Q=Q, scaling=100)
-  for n_chains in [1, 5, 10, 30]
+  for n_chains in chain_range
 }
 
 fig, ax = plt.subplots()
@@ -127,11 +131,17 @@ We will offload this work to another script, mostly because the simulations take
 
 Similarly, we offload the construction of the metrics.
 
-[script](small_case_sim_analysis.py)
+```{python}
+sim_archive = "small_case/simulations.h5"
+summariser = summ.Summariser(sim_archive)
+metrics = summariser.metrics(ncpus=6, no_move=True, drop=[])
+export_file = "small_case/metrics.parquet"
+metrics.write_parquet(export_file)
+```
 
 Here, we construct the empirical CDF
 ```{python}
-metrics = pl.read_parquet("small_case/metrics.parquet")
+# metrics = pl.read_parquet("small_case/metrics.parquet")
 hitting_time_cols = pl.selectors.starts_with('hitting_time_')
 aggregated_metrics = metrics.unpivot(
   on=hitting_time_cols,
@@ -181,4 +191,167 @@ aggregated_bugmetrics = bug_metrics.unpivot(
 cleaned_bugmetrics = aggregated_bugmetrics.fill_nan(max_value_plus_one).fill_null(max_value_plus_one)
 
 ax = sns.ecdfplot(cleaned_bugmetrics, x='hitting_time', hue='nchains', palette=colormaps.get('jet'))
+```
+
+# Checking Hitting Times: Improved Static Network
+
+Here, we will want to extend the construction above where we split the graph edge weights between two projections.
+
+```{python}
+bigraph_edge_attrs = {
+   'direct_weight': [
+      50, # (0, 1),
+      20, # (0, 3),
+      10, # (1, 2),
+      30, # (1, 3),
+      40, # (2, 0),
+      20, # (3, 2),
+      20, # (3, 4),
+      5, # (4, 3),
+    ],
+    'indirect_weight': [
+      250, # (0, 1),
+      30, # (0, 3),
+      40, # (1, 2),
+      70, # (1, 3),
+      110, # (2, 0),
+      100, # (3, 2),
+      40, # (3, 4),
+      5, # (4, 3),
+    ],
+    # see link_time_regr.qmd
+    'link_time': [
+      7.52, # (0, 1),
+      8.82, # (0, 3),
+      20.35, # (1, 2),
+      7.10, # (1, 3),
+      11.51, # (2, 0),
+      10.49, # (3, 2),
+      10.99, # (3, 4),
+      5.46, # (4, 3),
+    ]
+}
+
+bigraph_parameters = dict(graph_parameters)
+bigraph_parameters['edge_attrs'] = bigraph_edge_attrs
+
+B = ig.Graph(**bigraph_parameters)
+B.write_graphml("small_case/bigraph.graphml")
+
+fig, ax = plt.subplots()
+ig.plot(
+  B,
+  target = ax,
+  vertex_label=G.vs['name'],
+  vertex_color='lightcyan',
+  vertex_size=50,
+  edge_label=list(zip(B.es['direct_weight'], B.es['indirect_weight'], B.es['link_time'])),
+  edge_background='white',
+  edge_label_dist=1.7,
+)
+```
+
+So we have split the graph into two layers, a direct alyer, and an indirect layer. I haven't checked the direct/indirect split in the real graph, but we will assume for now that this is an appropriate split.
+We have derived link times by empirical resampling of the real graph link times, dividing by 12 to get smaller link times appropriate for a shorter global time scale, and then assigning the sampled link times by matching order of graph edge weight -> link time (higher weight gets shorter time)
+
+We can compute the transition matrix Q for this by performing an expansion of the home states.
+```{python}
+B_size_map = {nd['name']: nd['capacity'] for nd in G.vs}
+Qb = ht.extract_delayed_static_Qmat(
+  B, 
+  scaling=TIMESPAN,
+  size_mapping=B_size_map,
+  ordering_key='name', 
+  value_key='capacity',
+)
+```
+
+We can, again, compute the $N=1$ chain case.
+
+```{python}
+hitting_time_imprvst_numer = mch.compute_subset_multichain_hittings(
+  Nchains = 1,
+  Q = Qb.todense(),
+  index_subset = slice(Q.shape[0]),
+  scaling = 100,
+)
+ax = draw_ecdf(hitting_time_numerical, label='naive static')
+ax = draw_ecdf(hitting_time_imprvst_numer, ax=ax, label='improved static')
+ax.legend()
+```
+
+And the $N \in \{1, 5, 10, 30\}$ cases
+```{python}
+ht_imprv_numers = {
+  n_chains: mch.compute_subset_multichain_hittings(
+    n_chains, 
+    Q=Qb.todense(), 
+    index_subset=slice(Q.shape[0]), 
+    scaling=100
+  )
+  for n_chains in chain_range
+}
+
+fig, ax = plt.subplots()
+for i, (k, v) in enumerate(ht_imprv_numers.items()):
+  if k == 1: continue
+  draw_ecdf(v, ax=ax, label=f"N={k}", color=f"C{i}")
+  draw_ecdf(ht_numers[k], ax=ax, label=f"N={k} [naive]", linestyle='dashed', color=f"C{i}")
+plt.legend()
+```
+
+Let us also look at the scripts that run the simulations.
+
+```{python}
+home_sim_archive = "small_case/home_sims.h5"
+home_summariser = summ.Summariser(home_sim_archive)
+home_metrics = home_summariser.metrics(ncpus=6, no_move=True, drop=[])
+home_export_file = "small_case/home_metrics.parquet"
+home_metrics.write_parquet(home_export_file)
+```
+
+Plotting ...
+
+```{python}
+aggregated_home_metrics = home_metrics.unpivot(
+  on=hitting_time_cols,
+  index=['nchains','seed',],
+  variable_name='target',
+  value_name='hitting_time',
+)
+max_home_value_plus_one = aggregated_home_metrics.select(pl.col('hitting_time').max()).item() + 1
+cleaned_home_metrics = aggregated_home_metrics.fill_nan(max_home_value_plus_one).fill_null(max_home_value_plus_one)
+
+fig, axz = plt.subplots(nrows=2)
+axs = axz.flatten()
+
+for ax in axs:
+  sns.ecdfplot(
+    cleaned_home_metrics, 
+    x='hitting_time', 
+    hue='nchains', 
+    palette=colormaps.get('jet'),
+    ax=ax
+  )
+
+  for k, v in ht_imprv_numers.items():
+    draw_ecdf(v, ax=ax, label=f"N={k}")
+
+axs[1].set_xlim(-10, 100)
+```
+
+Comparing observed hitting time distributions between the naive and improved static network models
+
+```{python}
+fig, axs = plt.subplots(
+  nrows=2, ncols=2,
+  sharex=True, sharey=True,
+  layout='constrained')
+axz = axs.flatten()
+
+for ax, nchain in zip(axz, chain_range):
+  sns.ecdfplot(cleaned_metrics.filter(pl.col('nchains') == nchain), x='hitting_time', ax=ax, label='Naive')
+  sns.ecdfplot(cleaned_home_metrics.filter(pl.col('nchains') == nchain), x='hitting_time', ax=ax, label='Improved')
+  ax.set_title(f"Nchains={nchain}")
+ax.legend()
 ```
