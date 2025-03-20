@@ -1,3 +1,4 @@
+from typing import Mapping
 import numpy as np
 import igraph as ig
 from matplotlib import pyplot as plt, colors
@@ -7,16 +8,25 @@ import network_conversion as ntc
 import hitting_markov as hit
 from realisation_summary_stats import hitting_time
 
+def graph_read(filename: str):
+    return ig.Graph.Read(filename)
+
 ## NAIVE STATIC MODEL
 def get_naive_static_Q(
-    graph_file = "./concordant_networks/shuf_static_network.graphml",
+    graph: str | ig.Graph = "./concordant_networks/shuf_static_network.graphml",
     size_file="./concordant_networks/size_14.csv",
     time_span = (10*365),
+    ordering_key = 'name',
+    value_key = 'id',
 ):
+    """input graph is either the path name or the grpah object"""
 
-    G = ig.Graph.Read(graph_file)
+    if isinstance(graph, ig.GraphBase):
+        G = graph
+    else:
+        G = ig.Graph.Read(graph)
 
-    graph_map = {int(k):v for k,v in zip(G.vs['name'], G.vs['id'])}
+    graph_map = {int(k):v for k,v in zip(G.vs[ordering_key], G.vs[value_key])}
     sorted_graph_map = {k: graph_map[k] for k in sorted(graph_map.keys())}
     graph_ordering = ntc.Ordering(sorted_graph_map)
 
@@ -31,7 +41,7 @@ def get_naive_static_Q(
                                         ordering=graph_ordering,
                                         scaling_per_node=sizes,
                                         global_scaling=time_span,
-                                        ordering_key='name', 
+                                        ordering_key=ordering_key, 
                                         adjacency_attribute='weight',
                                         )
     Q = hit._Q_mat_naive(T)
@@ -67,35 +77,55 @@ def compute_static_hitting_times(
 
 
 ### STATIC MODEL WITH DELAYED RETURN
-def compute_delayed_static_hitting_times(
-    graph_file = "./concordant_networks/trimmed_static_base_1_threshold_4.graphml",
+
+
+def extract_delayed_static_Qmat(
+    graph: str|ig.Graph = "./concordant_networks/trimmed_static_base_1_threshold_4.graphml",
+    size_mapping: str|Mapping = "./concordant_networks/size_14.csv",
     scaling = (10*365),
     eps = 1e-7,
-    plot = False,
+    ordering_key = 'node', 
+    value_key = 'id',
+    cast_int = False, 
 ):
+    if isinstance(graph, ig.GraphBase):
+        Z = graph
+    else:
+        Z = ig.Graph.Read(graph)
 
-    Z = ig.Graph.Read(graph_file)
-
-    zgraph_map = {int(k):v for k,v in zip(Z.vs['node'], Z.vs['id'])}
+    base_ordering_arr = Z.vs[ordering_key]
+    if cast_int:
+        ordering_arr = list(map(int, base_ordering_arr))
+    else:
+        ordering_arr = base_ordering_arr
+    zgraph_map = dict(zip(ordering_arr, Z.vs[value_key]))
     zsorted_graph_map = {k: zgraph_map[k] for k in sorted(zgraph_map.keys())}
     zgraph_ordering = ntc.Ordering(zsorted_graph_map)
     zN = len(zgraph_ordering.sizes)
 
+    if isinstance(size_mapping, Mapping):
+        size_ordering = ntc.Ordering(size_mapping)
+    else:
+        size_ordering = ntc.Ordering.from_file(size_mapping)
+    sizes = np.array([size_ordering(i) for i in zgraph_ordering.order])
+
     T_direct = ntc.transition_matrix_from_graph(Z, 
-                                                ordering=zgraph_ordering, 
+                                                ordering=zgraph_ordering,
+                                                scaling_per_node=sizes,
                                                 global_scaling=scaling, 
-                                                ordering_key='node', 
+                                                ordering_key=ordering_key, 
                                                 adjacency_attribute='direct_weight'
                                             )
     T_indirect = ntc.transition_matrix_from_graph(Z, 
                                                 ordering=zgraph_ordering, 
+                                                scaling_per_node=sizes,
                                                 global_scaling=scaling, 
-                                                ordering_key='node', 
+                                                ordering_key=ordering_key, 
                                                 adjacency_attribute='indirect_weight'
                                             )
     T_return = ntc.transition_matrix_from_graph(Z, 
                                                 ordering=zgraph_ordering, 
-                                                ordering_key='node', 
+                                                ordering_key=ordering_key, 
                                                 adjacency_attribute='link_time'
                                             )
 
@@ -138,6 +168,12 @@ def compute_delayed_static_hitting_times(
 
     R = hit._Q_mat_sparse(T).tocsr()
 
+    return R
+
+def eval_delayed_static_hitting_times(R, plot=False):
+
+    zN = R.shape[0]
+
     zhitting_times = [
         hit.solve_hitting_time(R, [i]) for i in range(zN)
     ]
@@ -163,6 +199,21 @@ def compute_delayed_static_hitting_times(
         axs = [ax1, ax2]
 
     return zhitting_time_arr, axs
+
+
+def compute_delayed_static_hitting_times(
+    graph_file = "./concordant_networks/trimmed_static_base_1_threshold_4.graphml",
+    scaling = (10*365),
+    eps = 1e-7,
+    plot = False,
+):
+    R = extract_delayed_static_Qmat(
+        graph_file=graph_file,
+        scaling=scaling,
+        eps=eps,
+    )
+
+    return eval_delayed_static_hitting_times(R, plot=plot)
 
 def main():
 

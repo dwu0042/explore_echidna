@@ -68,6 +68,23 @@ def stitch_hitting_arrays(hitting_arrs: Iterable):
         [conform_compacted_array(arr, idx) for idx, arr in enumerate(hitting_arrs)]
     ).T
 
+def compute_subset_multichain_hittings(Nchains, Q, index_subset=slice(None), precision=30, scaling=1.0):
+    if isinstance(index_subset, slice):
+        index_range = range(*index_subset.indices(Q.shape[0]))
+    else:
+        index_range = index_subset
+    return stitch_hitting_arrays(
+        [
+            compute_multichain_hitting_time(
+                Nchains,
+                Q, index=idx,
+                precision=precision,
+                scaling=scaling,
+            )[index_subset]
+            for idx in index_range 
+        ]
+    )
+
 def compute_all_multichain_hittings(Nchains, Q, precision=30, scaling=1.0):
     return stitch_hitting_arrays(
         [
