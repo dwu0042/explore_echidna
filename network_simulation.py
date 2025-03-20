@@ -20,6 +20,8 @@ class Simulation:
             self.state
         ]  # softref here should update as initial self.state updates in seed
 
+        self.rng = np.random.default_rng(None)
+
     @property
     def history(self):
         return np.hstack(self._history)
@@ -45,11 +47,21 @@ class Simulation:
         Does not reset the initial state.
         The rng seed can be specified.
         """
-        self.rng = np.random.default_rng(rng_seed)
+        if rng_seed is not None:
+            self.rng = np.random.default_rng(rng_seed)
 
         for _ in range(n_seed_events):
             location = int(self.rng.uniform(0, len(self.state)))
             self.state[location, 0] += n_seed_number
+
+        self.state = np.clip(self.state, 0, self.N)
+
+    def fixedseed(self, location, number_to_seed=1, rng_seed=None):
+        
+        if rng_seed is not None:
+            self.rng = np.random.default_rng(rng_seed)
+
+        self.state[location, 0] += number_to_seed
 
         self.state = np.clip(self.state, 0, self.N)
 
@@ -376,3 +388,41 @@ class TemporalSim(SimulationWithMovers):
         super().reset(soft=soft)
 
         self.time_travellers = np.zeros_like(self.time_travellers, dtype=np.int64)
+
+class SnapshotNaive(Simulation):
+    def __init__(self, full_size: Sequence[int], parameters: Mapping, timings: Sequence, dt=1.0):
+        super().__init__(
+            full_size=full_size,
+            parameters=parameters,
+            dt=dt,
+        )
+
+        self.current_index = 0
+        self.timings = timings
+
+    def swapover(self):
+        # assume current index is correctly set
+        self.parameters['transition_matrix'] = self.parameters['transition_matrices'][self.current_index]
+
+        self.parameters['gamma'] = self.parameters['gammas'][self.current_index]
+
+    def reset(self, soft=True):
+        super().reset(soft=soft)
+        self.current_index = 0
+
+    def simulate(self, until=100, nostop=False):
+        self.swapover()
+        
+        for ti in range(int(until / self.dt)):
+            
+            self.state = self.step()
+            self._history.append(self.state)
+            self.ts.append(self.ts[-1] + self.dt)
+
+            if self.ts[-1] >= self.timings[self.current_index+1]:
+                self.current_index += 1
+                self.swapover()
+
+            if not nostop and np.sum(self.state) < 1:
+                print(f"Early termination: {self.ts[-1] =}")
+                break
