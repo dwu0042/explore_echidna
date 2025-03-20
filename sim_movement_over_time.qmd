@@ -9,6 +9,7 @@ import h5py
 import polars as pl
 import numpy as np
 from matplotlib import pyplot as plt
+import seaborn as sns
 
 rng = np.random.default_rng(2025)
 ```
@@ -64,6 +65,7 @@ plt.plot(
 
 ```{python}
 import igraph as ig
+from collections import Counter
 
 G = ig.Graph.Read("conc_tempo_14_detailed/0000.graphml")
 S = ig.Graph.Read("concordant_networks/trimmed_static_base_1_threshold_4.graphml")
@@ -82,7 +84,7 @@ snapshot_df = pl.from_dict(
 static_df = pl.from_dict(
     {
         'indirect': S.es['indirect_weight'],
-        # 'link_time': S.es['link_time'],
+        'direct': S.es['direct_weight'],
         'source': S.es['source_loc'],
         'target': S.es['dest_loc'],
     }
@@ -104,17 +106,124 @@ dep_rates = pl.concat([
         .with_columns(model=pl.lit('static'))
         .select('dep_rate', 'source', 'target', 'model')
 ])
-
-
 ```
-```{python}
-hist_opts = {
-    'histtype': 'step',
-    'bins': 31,
-    'density': True
-}
-for name, arr in zip(['snapshot', 'static'], [snapshot_moves, static_moves]):
-    plt.hist(arr, **hist_opts, label=name)
 
+```{python}
+sns.histplot(
+    dep_rates.group_by('source', 'model').agg(pl.col('dep_rate').sum()),
+    x='dep_rate',
+    hue='model',
+)
+```
+
+
+I have a hunch about this. Let's construct the "combined" graph of the snapshots over time, and see when it becomes conencted.
+This will be the minimum time before we can hit equilibirum.
+```{python}
+NO_CACHE = False
+connectedness_file = "conc_tempo_14_detailed/analysis/overlay_connectedness.parquet"
+
+if NO_CACHE:
+    Gs = [
+        ig.Graph.Read(f"conc_tempo_14_detailed/{i:04d}.graphml")
+        for i in range(0, 3626+14, 14)
+    ]
+
+    # remove problem vertex (isolated hospital)
+    problem_vertex = 4454
+    for graph in Gs:
+        graph.delete_vertices(graph.vs.select(name_eq=problem_vertex).indices)
+
+    connectedness = []
+    cluster_sizes = []
+    for i in range(len(Gs)):
+        U = ig.union(Gs[:i+1])
+        connectedness.append(U.is_connected())
+        cluster_sizes.append(Counter(map(len, U.connected_components())))
+
+    df = pl.from_dicts([
+        {'snapshot': i, 'fully_connected': full_conn, 'cluster_size': k, 'count': v} 
+        for i, (full_conn, clus_counter) in enumerate(zip(connectedness, cluster_sizes)) 
+        for k,v in clus_counter.items()
+    ])
+
+    df.write_parquet(connectedness_file)
+else:
+    df = pl.read_parquet(connectedness_file)
+```
+
+```{python}
+fig, axs = plt.subplot_mosaic([['c'], ['c'], ['b']], sharex=True, layout='constrained')
+
+cluster_stats = df.group_by('snapshot').agg(
+    pl.col('cluster_size').max().alias('dominant_cluster_size'),
+    pl.col('count').sum().alias('number_of_clusters')
+).with_columns(time = pl.col('snapshot') * 14).sort('snapshot')
+
+sns.lineplot(cluster_stats, x='time', y='dominant_cluster_size', ax=axs['c'])
+sns.lineplot(cluster_stats, x='time', y='number_of_clusters', ax=axs['b'])
+```
+
+
+## Rare path exploration
+
+We want to see if we can come up with a way of detecting and analysing "rare" paths.
+Specifically rare 1-paths (potentially of the indirect flavour).
+
+To do this, we will want to tabulate edges of the snapshot against the static edge weights
+
+```{python}
+# static ref table already extracted in earlier cell
+
+NO_CACHE = False
+
+snapshot_table_file = "conc_tempo_14_detailed/analysis/combined_outwards.parquet"
+
+if NO_CACHE:
+    snapshot_graph_tables = []
+    for i in range(0, 3626+14, 14):
+        graph = ig.Graph.Read(f"conc_tempo_14_detailed/{i:04d}.graphml")
+        problem_vertex = 4454
+        graph.delete_vertices(graph.vs.select(name_eq=problem_vertex).indices)
+        snapshot_graph_tables.append(
+            (pl.from_dict({
+                'source': graph.es['source'],
+                'target': graph.es['target'],
+                'snapshot_direct': graph.es['weight'],
+                'snapshot_indirect': graph.es['departures'],
+            })
+            .cast({
+                'source': pl.Int64,
+                'target': pl.Int64,
+                'snapshot_direct': pl.Int64,
+                'snapshot_indirect': pl.Int64,
+            })
+            .with_columns(time=pl.lit(i))
+            )
+        )
+    snapshot_table = pl.concat(snapshot_graph_tables)
+    snapshot_table.write_parquet(snapshot_table_file)
+else:
+    snapshot_table = pl.read_parquet(snapshot_table_file)
+
+joined_table = snapshot_table.join(static_df, on=['source', 'target'])
+
+SS_WIDTH = 14
+
+joined_table = (
+    joined_table
+    .with_columns(
+        ss_direct_rate = pl.col('snapshot_direct').cast(pl.Float64) / pl.col('estimated_size') / SS_WIDTH,
+        ss_indirect_rate = pl.col('snapshot_indirect').cast(pl.Float64) / pl.col('estimated_size') / SS_WIDTH,
+        st_direct_rate = pl.col('direct').cast(pl.Float64) / pl.col('estimated_size') / S['time_span'],
+    )
+)
+```
+
+```{python}
+devs = joined_table.filter(pl.col('dep_rate') > 0.0).select(pl.col('ss_indirect_rate') - pl.col('dep_rate')).to_series().to_numpy()
+plt.hist(devs, bins=301)
 plt.yscale('log')
-plt.legend()
+plt.axvline(3 * np.sqrt(np.mean(devs**2)), color='red')
+plt.axvline(-3*np.sqrt(np.mean(devs**2)), color='red')
+```
