@@ -1,0 +1,147 @@
+---
+title: Rare Pathing
+---
+
+## Direct rare pathing
+```{python}
+import igraph as ig
+import numpy as np
+import network_simulation as netsim
+
+from matplotlib import pyplot as plt
+import seaborn as sns
+import polars as pl
+```
+
+```{python}
+
+G = ig.Graph(
+    n=4, 
+    edges=[
+        (0, 1),
+        (1, 2),
+        (2, 0),
+        # (0, 3),
+    ], 
+    directed=True, 
+    edge_attrs={'weight':[
+        1000,
+        1000,
+        1000,
+        # 0,
+    ]}
+)
+
+R = ig.Graph(
+    n=4, 
+    edges=[
+        (0, 1),
+        (1, 2),
+        (2, 0),
+        (0, 3),
+    ], 
+    directed=True, 
+    edge_attrs={'weight':[
+        0,
+        0,
+        0,
+        100,
+    ]}
+)
+```
+
+```{python}
+N_size = np.array([3000, 3000, 3000, 100]).reshape((-1, 1))
+
+
+T_G = np.array(G.get_adjacency('weight').data) / N_size
+
+T_R = np.array(R.get_adjacency('weight').data) / N_size
+
+T_stack = np.stack([T_G[:,:,np.newaxis], T_R[:,:,np.newaxis], *[T_G[:,:,np.newaxis] for _ in range(998)]], axis=2)
+
+T_ave = np.squeeze(np.mean(T_stack, axis=2))
+```
+
+```{python}
+## STATIC
+step_size = 0.2
+gamma_static = T_ave.sum(axis=1, keepdims=True) # (-1,1)
+W_ave = T_ave / gamma_static
+W_ave[np.isnan(W_ave)] = 0.0
+
+static_sim = netsim.Simulation(
+    full_size = N_size,
+    parameters = {
+        'beta': 0.0,
+        'gamma': gamma_static,
+        'prob_final_stay': np.zeros_like(gamma_static),
+        'transition_matrix': W_ave,
+    },
+    dt = step_size,
+)
+
+static_sim.fixedseed(0, 1000)
+```
+
+```{python}
+## SNAPSHOT
+gamma_normal = T_G.sum(axis=1, keepdims=True)
+gamma_rare = T_R.sum(axis=1, keepdims=True)
+
+W_normal = T_G / gamma_normal
+W_rare = T_R / gamma_rare
+
+W_normal[np.isnan(W_normal)] = 0.0
+W_rare[np.isnan(W_rare)] = 0.0
+
+snapshot_sim = netsim.SnapshotNaive(
+    N_size, 
+    parameters={
+        'beta': 0.0,
+        'transition_matrix': W_normal,
+        'gamma': gamma_normal,
+        'prob_final_stay': np.zeros_like(gamma_normal),
+        'transition_matrices': [W_normal, W_rare, W_normal],
+        'gammas': [gamma_normal, gamma_rare, gamma_normal],
+    },
+    timings=[0, 5, 8],
+    dt=step_size,
+)
+
+snapshot_sim.fixedseed(0, 1000)
+```
+
+```{python}
+N_SIMS = 1000
+
+histories = []
+for it_ in range(N_SIMS):
+    snapshot_sim.reset(soft=True)
+    snapshot_sim.simulate(30, nostop=True)
+    histories.append(np.array(snapshot_sim.history))
+```
+
+
+## Indirect rare pathing
+
+```{python}
+S = ig.Graph(
+    n=4, 
+    edges=[
+        (0, 1),
+        (1, 2),
+        (2, 0),
+        # (0, 3),
+    ], 
+    directed=True, 
+    edge_attrs={
+        'weight': [
+            1000,
+            1000,
+            1000,
+            # 0,
+        ]
+    }
+)
+```
