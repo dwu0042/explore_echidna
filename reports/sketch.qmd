@@ -89,17 +89,21 @@ import seaborn as sns
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy import stats
+from pathlib import Path
 
 sns.set()
 sns.set_palette('colorblind')
+sns.set_context('paper')
+
+root = Path("../")
 ```
 
 ```{python}
 metrics_archives = {
-    'temporal': './zero_sims/temporal/metrics_30s.parquet',
-    'static': './zero_sims/static/metrics_30s_fa.parquet',
-    'snapshot': './zero_sims/snapshot/metrics_30s_fa.parquet',
-    'naive_static': './zero_sims/naive_static/metrics_30s.parquet',
+    'temporal': root / 'simulations/zero_sims/temporal/metrics_30s.parquet',
+    'static': root / 'simulations/zero_sims/static/metrics_30s_fa.parquet',
+    'snapshot': root / 'simulations/zero_sims/snapshot/metrics_30s_fa.parquet',
+    'naive_static': root / 'simulations/zero_sims/naive_static/metrics_30s.parquet',
 }
 
 processed_results = {}
@@ -129,7 +133,7 @@ for model, metrics in processed_results.items():
     agg_metrics[model] = agg_met
     hitting_time_dists[model] = np.sort(agg_met.select('hitting_time').to_series().to_numpy())
 
-analytical_expected_hitting_naive = pl.read_csv("./hitting_time_analysis/numer_hitting_time_30indv_chains.csv")
+analytical_expected_hitting_naive = pl.read_csv(root / "outputs/hitting_time_analysis/numer_hitting_time_30indv_chains.csv")
 ana_E_hitT_naive = np.sort(analytical_expected_hitting_naive.select('hitting_time').to_series().to_numpy().flatten())
 
 plt.figure()
