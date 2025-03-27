@@ -8,3 +8,6 @@
 
 env.ini
 
+*.html
+*.pkl
+*.png
