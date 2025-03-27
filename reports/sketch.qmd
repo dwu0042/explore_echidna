@@ -1,0 +1,153 @@
+---
+title: "DRAFT: Towards a paper on patient movement in the Victorian hospital system"
+subtitle: "an exercise in trying to avoid reality"
+author: "X-- xXx THE AUTHORS xXx --X"
+filters:
+  - tikz 
+format: html
+---
+
+- Introduction
+  - CPE is a concern in Victoria, and we want to manage it and prevent it from spreading
+    - A good way to understand potential patterns of spread is to understand how patients move between facilities in the system
+  - Inter-facility patient movement models for studying CPE
+    - mostly static networks, or projected to static networks
+    - but temporal fluctuations can potentially affect the dynamics
+  - Temporal network methodology is relatively well established
+    - but little on systems where information/contact leaves the system for periods of time
+  - Our aim is to see whether or not this temporal fidelity is needed for this context
+    - Can we get similar movement dynamics with simpler approximations
+- Setting and Data Sources
+  - Standard spiel
+- Models and Methods
+  - "Standard" model of  
+
+
+:::{#fig-mineandonlymine}
+```{.tikz}
+%%| format: svg
+%%| filename: transfer_diagram
+%%| img-width: 900
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric}
+
+\begin{tikzpicture}[
+    node distance=2cm, 
+    hospital/.style={draw, circle},
+    >=latex
+  ]
+
+  \begin{scope}[every node/.style = {hospital}]
+  \node (A1) {A};
+  \node (B1) [below=of A1] {B};
+  \node (A2) [right=of A1] {A};
+  \node (A3) [right=of A2] {A};
+  \node (B2) [below=of A2] {B};
+  \node (B3) [below=of A3] {B};
+  \end{scope}
+
+  \draw[->, dashed] (A1) edge[bend left] node [above] {indirect self-transfer} (A3);
+  \draw[->, dashed] (A1) edge (B2);
+  \draw[->, dashed] (A1) edge node [right] {indirect transfer} (B3);
+  \draw[->] (A1) edge  node[above] {continuity} (A2);
+  \draw[->] (A2) edge  (A3);
+  \draw[->] (A1) edge node[left] {direct transfer}  (B1);
+\end{tikzpicture}
+```
+
+Patient movements from hospital A at a given time: (a) a direct transfer to another facility B at the same time, (b) an indirect transfer to another facility B at a different time, going home in between, (c) an indirect self-transfer, where the patient is discharged home, but readmits at the same facility at a later time, (d) a continuity step where the patient stay at a given facility
+:::
+
+Here, we are interested in two processes:
+
+1. the process that discharges patients from hospital
+2. the process that readmits patients to hospital
+
+We can characterise each by a random variable that represents the time they spend in the preceding state.
+These random variables -- $s$ for the discharge process and $\tau$ for the readmission process -- are modelled differently in each of the different network representations.
+
+| Network Representation | Model of $s$ (per edge) | Model of $\tau$ (per edge) |
+|:------:|:------------------:|:------------------:|
+| Naïve Static | Exponential | 0 |
+| Static with Return Home | Exponential | Exponential |
+| Static Snapshots | Exponential, varies over time | Difference of Exponentials, varies over time |
+| Temporal | Exponential, varies with time | Empirical |
+
+{{< placeholder >}}
+... need an image here for the empirical distribution of $s$.
+
+
+1. Results
+  - Temporal network model yields slower and less diverse spread than other network models.
+  - A naïve static network model vastly overestimates the spread 
+  - Some improvement can be made by using networks and models that incorporate more temporal fidelity, but they do not capture the magnitude of change in the temporal network model
+
+```{python}
+#| echo: false
+import netsim_summariser as summ
+import polars as pl
+import seaborn as sns
+import numpy as np
+from matplotlib import pyplot as plt
+from scipy import stats
+
+sns.set()
+sns.set_palette('colorblind')
+```
+
+```{python}
+metrics_archives = {
+    'temporal': './zero_sims/temporal/metrics_30s.parquet',
+    'static': './zero_sims/static/metrics_30s_fa.parquet',
+    'snapshot': './zero_sims/snapshot/metrics_30s_fa.parquet',
+    'naive_static': './zero_sims/naive_static/metrics_30s.parquet',
+}
+
+processed_results = {}
+
+for label, archive in metrics_archives.items():
+        processed_results[label] = pl.read_parquet(archive)
+
+hitting_time_columns = pl.selectors.starts_with('hitting_time_')
+
+agg_metrics = dict()
+hitting_time_dists = dict()
+for model, metrics in processed_results.items():
+    agg_met = (metrics
+                   .unpivot(
+                     on=hitting_time_columns, 
+                     index='seed', 
+                     variable_name='target', 
+                     value_name='hitting_time'
+                   )
+                   .with_columns(target_seed=(
+                       pl.col('target')
+                       .str.strip_prefix('hitting_time_')
+                       .str.to_integer()
+                   ))
+                   .drop('target')
+    )
+    agg_metrics[model] = agg_met
+    hitting_time_dists[model] = np.sort(agg_met.select('hitting_time').to_series().to_numpy())
+
+analytical_expected_hitting_naive = pl.read_csv("./hitting_time_analysis/numer_hitting_time_30indv_chains.csv")
+ana_E_hitT_naive = np.sort(analytical_expected_hitting_naive.select('hitting_time').to_series().to_numpy().flatten())
+
+plt.figure()
+for model, dist in hitting_time_dists.items():
+    plt.plot(dist, np.linspace(0, 1, len(dist), endpoint=False), label=model)
+
+xlim = plt.gca().get_xlim()
+ylim = plt.gca().get_ylim()
+
+plt.plot(ana_E_hitT_naive, np.linspace(0, 1, len(ana_E_hitT_naive)), 
+         label='naive\nanalytical', linestyle='dashed')
+
+plt.xlim(xlim)
+plt.ylim(None, 0.9)
+
+# plt.ylim(1e-3, None)
+plt.xlabel('hitting time')
+plt.ylabel('ECDF')
+
+plt.legend(loc='lower right')
+```

@@ -316,8 +316,6 @@ Toy model of the effect of indirect transfer on hitting time
 :::
 
 
-::: {#new-eq}
-
 Let us denote the (empirical) distribution of return times as $f(T)$, where $T$ is the return time.
 Then for a naive model, we have that the hazard of moving between two hospitals is approximately
 $\lambda_0 = (\mathbb{E}(A \to B))^{-1} = (\int_0^{\infty} f(T) T dT)^{-1}$

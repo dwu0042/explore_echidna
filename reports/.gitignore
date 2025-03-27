@@ -1,2 +1,2 @@
-report.html
-report_files
+*.html
+*_files/
