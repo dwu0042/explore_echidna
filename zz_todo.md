@@ -238,11 +238,11 @@ I would have to change the rate parameter slightly.
 Looking at the movements, the static reaches equilibrium much faster than the snapshot.
 We should also check the temporal network
 
-[14/05] Checking the connectedness of the snapshot graphs -> the naive igraph union of the snapshots are not strongly connected, but the static network is...
+[14/03] Checking the connectedness of the snapshot graphs -> the naive igraph union of the snapshots are not strongly connected, but the static network is...
   - turns out it's the isolated node that is causing this (and why we are 337 vs 338)
     - we can remove self-loops, purge isolated nodes and do this connectedness check over time.
 
-[17/05]
+[17/03]
 This was done, and it looks like the connectedness of the aggregated graph roughly matches with the movement.
 
 18 Mar 2025
@@ -254,3 +254,12 @@ Rare path - how to investigate?
   - Make a simple case triangle network + 1, where the +1 is kjoined with low weight in one (poss early) snapshot
   - Make table of t | edge | weight | rel weight | ... to detect rare edges in our network
 
+25 Mar 2025
+===========
+
+Time to write up
+
+[26/03]
+
+Clean upnthe repository. Shelve stuff in the right place.
+A fresh template has beens tarted in echidna_cleaup
