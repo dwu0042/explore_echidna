@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns
+         http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+<!-- Created by igraph -->
+  <key id="v_name" for="node" attr.name="name" attr.type="string"/>
+  <key id="v_capacity" for="node" attr.name="capacity" attr.type="double"/>
+  <key id="e_direct_weight" for="edge" attr.name="direct_weight" attr.type="double"/>
+  <key id="e_indirect_weight" for="edge" attr.name="indirect_weight" attr.type="double"/>
+  <key id="e_link_time" for="edge" attr.name="link_time" attr.type="double"/>
+  <graph id="G" edgedefault="directed">
+    <node id="n0">
+      <data key="v_name">A</data>
+      <data key="v_capacity">100</data>
+    </node>
+    <node id="n1">
+      <data key="v_name">B</data>
+      <data key="v_capacity">120</data>
+    </node>
+    <node id="n2">
+      <data key="v_name">C</data>
+      <data key="v_capacity">200</data>
+    </node>
+    <node id="n3">
+      <data key="v_name">D</data>
+      <data key="v_capacity">100</data>
+    </node>
+    <node id="n4">
+      <data key="v_name">E</data>
+      <data key="v_capacity">30</data>
+    </node>
+    <edge source="n0" target="n1">
+      <data key="e_direct_weight">50</data>
+      <data key="e_indirect_weight">250</data>
+      <data key="e_link_time">1.7</data>
+    </edge>
+    <edge source="n0" target="n3">
+      <data key="e_direct_weight">20</data>
+      <data key="e_indirect_weight">30</data>
+      <data key="e_link_time">24.6</data>
+    </edge>
+    <edge source="n1" target="n2">
+      <data key="e_direct_weight">10</data>
+      <data key="e_indirect_weight">40</data>
+      <data key="e_link_time">20.4</data>
+    </edge>
+    <edge source="n1" target="n3">
+      <data key="e_direct_weight">30</data>
+      <data key="e_indirect_weight">70</data>
+      <data key="e_link_time">16.6</data>
+    </edge>
+    <edge source="n2" target="n0">
+      <data key="e_direct_weight">40</data>
+      <data key="e_indirect_weight">110</data>
+      <data key="e_link_time">2.9</data>
+    </edge>
+    <edge source="n3" target="n2">
+      <data key="e_direct_weight">20</data>
+      <data key="e_indirect_weight">100</data>
+      <data key="e_link_time">11.9</data>
+    </edge>
+    <edge source="n3" target="n4">
+      <data key="e_direct_weight">20</data>
+      <data key="e_indirect_weight">40</data>
+      <data key="e_link_time">18.8</data>
+    </edge>
+    <edge source="n4" target="n3">
+      <data key="e_direct_weight">5</data>
+      <data key="e_indirect_weight">5</data>
+      <data key="e_link_time">26.75</data>
+    </edge>
+  </graph>
+</graphml>

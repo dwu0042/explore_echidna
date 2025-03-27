@@ -398,7 +398,8 @@ class SnapshotNaive(Simulation):
         )
 
         self.current_index = 0
-        self.timings = timings
+        self.timings = np.array(timings).flatten()
+        self.timings = np.concatenate([self.timings, [np.inf]])
 
     def swapover(self):
         # assume current index is correctly set

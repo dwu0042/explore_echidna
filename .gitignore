@@ -6,20 +6,5 @@
 .ruff_cache
 .jupyter_cache
 
-# project-specific folders
-old_**/
-conc_**/
-pres**/
-zero_sims/
-concordant_networks/
+env.ini
 
-# project-specific file types
-*.png
-*.out
-*pkl
-*.lgl
-*.profile
-*.h5
-
-reports/report_files
-reports/report.html

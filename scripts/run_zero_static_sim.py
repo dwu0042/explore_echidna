@@ -81,7 +81,7 @@ def run_sims(n_reps=20):
             simdate = now.strftime('%y%m%d')
             simtime = now.strftime('%H%M%S')
             simid = int(simdate + simtime)
-            outname = f"zero_sims/static/sim_all_30s.h5"
+            outname = f"zero_sims/static/sim_all_30s_fixed_axis.h5"
             simulate_sim_and_record(sim, simid=simid, until=8*365, nostop=True, outfile=outname, with_movers=True, simdate=simdate, simtime=simtime, seed=i)
 
 if __name__ == "__main__":

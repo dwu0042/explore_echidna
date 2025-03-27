@@ -86,6 +86,7 @@ if __name__ == "__main__":
 
     REPEATS = 20
     for _ in range(REPEATS):
+        print(end='\n', flush=True)
         for i, v in enumerate(conv.ordering.sizes):
             print(i, v, sep=',', end=' ', flush=True)
 
@@ -97,5 +98,5 @@ if __name__ == "__main__":
             simdate = now.strftime('%y%m%d')
             simtime = now.strftime('%H%M%S')
             simid = int(simdate + simtime)
-            outname = f"zero_sims/snapshot/sims_with_30seeds_pseudocap.h5"
+            outname = f"zero_sims/snapshot/sims_30s_pc_fa_r2.h5"
             simulate_sim_and_record(sim, simid=simid, until=8*365, nostop=True, outfile=outname, with_movers=True, simdate=simdate, simtime=simtime, seed=i)

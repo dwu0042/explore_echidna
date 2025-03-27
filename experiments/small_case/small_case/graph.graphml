@@ -10,47 +10,47 @@
   <graph id="G" edgedefault="directed">
     <node id="n0">
       <data key="v_name">A</data>
-      <data key="v_capacity">10</data>
+      <data key="v_capacity">100</data>
     </node>
     <node id="n1">
       <data key="v_name">B</data>
-      <data key="v_capacity">12</data>
+      <data key="v_capacity">120</data>
     </node>
     <node id="n2">
       <data key="v_name">C</data>
-      <data key="v_capacity">20</data>
+      <data key="v_capacity">200</data>
     </node>
     <node id="n3">
       <data key="v_name">D</data>
-      <data key="v_capacity">10</data>
+      <data key="v_capacity">100</data>
     </node>
     <node id="n4">
       <data key="v_name">E</data>
-      <data key="v_capacity">3</data>
+      <data key="v_capacity">30</data>
     </node>
     <edge source="n0" target="n1">
-      <data key="e_weight">30</data>
+      <data key="e_weight">300</data>
     </edge>
     <edge source="n0" target="n3">
-      <data key="e_weight">5</data>
+      <data key="e_weight">50</data>
     </edge>
     <edge source="n1" target="n2">
-      <data key="e_weight">5</data>
+      <data key="e_weight">50</data>
     </edge>
     <edge source="n1" target="n3">
-      <data key="e_weight">10</data>
+      <data key="e_weight">100</data>
     </edge>
     <edge source="n2" target="n0">
-      <data key="e_weight">15</data>
+      <data key="e_weight">150</data>
     </edge>
     <edge source="n3" target="n2">
-      <data key="e_weight">12</data>
+      <data key="e_weight">120</data>
     </edge>
     <edge source="n3" target="n4">
-      <data key="e_weight">6</data>
+      <data key="e_weight">60</data>
     </edge>
     <edge source="n4" target="n3">
-      <data key="e_weight">1</data>
+      <data key="e_weight">10</data>
     </edge>
   </graph>
 </graphml>
