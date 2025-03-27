@@ -11,9 +11,9 @@ from typing import Mapping, Hashable, Optional, Sequence, Any, SupportsFloat
 from functools import lru_cache
 from pathlib import Path
 
-import graph_importer as gim
-from util import Iden, nparr_find, NotFound, SupportsGet
-import examine_transfers_for_sizes as esz
+from . import graph_importer as gim
+from .util import Iden, NotFound, SupportsGet
+from . import examine_transfers_for_sizes as esz
 
 
 class Ordering:

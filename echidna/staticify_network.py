@@ -1,8 +1,7 @@
 import igraph as ig
-from networkx import attracting_components
 import polars as pl
 
-import graph_importer as gim
+from . import graph_importer as gim
 
 
 def load_temporal_network(path):

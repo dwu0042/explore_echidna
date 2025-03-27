@@ -2,7 +2,7 @@
 This is an implementation of the computation of expected minimal hitting time over N identically parameterised continuous-time Markov chains {M_i(λ,Q)} 
 """
 
-import hitting_markov as mkv  # single chain computations
+from . import hitting_markov as mkv  # single chain computations
 import numpy as np
 from scipy import linalg
 from scipy import integrate

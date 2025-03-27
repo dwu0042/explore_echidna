@@ -1,5 +1,5 @@
 import numpy as np
-import graph_importer as gim
+from . import graph_importer as gim
 import polars as pl
 import igraph as ig
 import glob

@@ -2,8 +2,8 @@
 
 from typing import Sequence, Mapping
 import numpy as np
-from util import BlackHole
-from numba_sample import multinomial_sparse_full, truncated_poisson, multinomial_sample_sparse_collapsed
+from .util import BlackHole
+from .numba_sample import multinomial_sparse_full, truncated_poisson, multinomial_sample_sparse_collapsed
 import h5py
 
 
