@@ -263,3 +263,11 @@ Time to write up
 
 Clean upnthe repository. Shelve stuff in the right place.
 A fresh template has beens tarted in echidna_cleaup
+
+[27/03]
+
+Repo restructured we now have a "library" folder that is installable for core behaviour (graph projection, simulation, analysis)
+various other folders for scripts and notebooks and experiments
+and a potentially unified output folder - though we can and should reconstruct outputs in quarto in computation cells.
+
+For release, we should write tests for the ocre library code, and we need to write up the entry points in the pyproject.toml
