@@ -5,7 +5,29 @@ author: "X-- xXx THE AUTHORS xXx --X"
 filters:
   - tikz 
 format: html
+execute:
+  echo: false
 ---
+
+```{python}
+#| echo: false
+from echidna import netsim_summariser as summ
+import polars as pl
+import seaborn as sns
+import numpy as np
+import igraph as ig
+from matplotlib import pyplot as plt
+from scipy import stats
+from pathlib import Path
+from collections import Counter
+
+sns.set()
+sns.set_style('whitegrid')
+sns.set_palette('colorblind')
+sns.set_context('paper')
+
+root = Path("../")
+```
 
 - Introduction
   - CPE is a concern in Victoria, and we want to manage it and prevent it from spreading
@@ -23,7 +45,7 @@ format: html
   - "Standard" model of  
 
 
-:::{#fig-mineandonlymine}
+<!-- :::{#fig-mineandonlymine}
 ```{.tikz}
 %%| format: svg
 %%| filename: transfer_diagram
@@ -55,7 +77,126 @@ format: html
 ```
 
 Patient movements from hospital A at a given time: (a) a direct transfer to another facility B at the same time, (b) an indirect transfer to another facility B at a different time, going home in between, (c) an indirect self-transfer, where the patient is discharged home, but readmits at the same facility at a later time, (d) a continuity step where the patient stay at a given facility
+::: -->
+
+:::{#fig-tripleburstdragon layout="[[10,-1,10,-1,10]]"}
+
+```{.tikz}
+%%| format: svg
+%%| filename: movement_case_one
+%%| img-width: 800
+%%| fig-cap: direct transfer
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, shapes.arrows}
+
+\begin{tikzpicture}[
+  node distance=2cm,
+  >=latex
+]
+  \tikzset{
+    squarx/.style= {
+      regular polygon,
+      regular polygon sides=4
+    }
+  }
+  \tikzset{
+    house/.style= {
+      single arrow,
+      shape border rotate=90,
+      single arrow head extend=0pt,
+      single arrow tip angle=120,
+      minimum height=0.75cm,
+      minimum width=0.75cm
+    }
+  }
+
+  \node[draw, squarx] (A) {A};
+  \node (X) [right=of A] {};
+  \node[draw, squarx] (B) [right=of X] {B};
+  \node[draw, house] (H) [below=of X] {};
+
+  \draw[->] (A) edge  (B);
+\end{tikzpicture}
+```
+
+```{.tikz}
+%%| format: svg
+%%| filename: movement_case_two
+%%| img-width: 800
+%%| fig-cap: indirect transfer
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, shapes.arrows}
+
+\begin{tikzpicture}[
+  node distance=2cm,
+  >=latex
+]
+  \tikzset{
+    squarx/.style= {
+      regular polygon,
+      regular polygon sides=4
+    }
+  }
+  \tikzset{
+    house/.style= {
+      single arrow,
+      shape border rotate=90,
+      single arrow head extend=0pt,
+      single arrow tip angle=120,
+      minimum height=0.75cm,
+      minimum width=0.75cm
+    }
+  }
+
+  \node[draw, squarx] (A) {A};
+  \node (X) [right=of A] {};
+  \node[draw, squarx] (B) [right=of X] {B};
+  \node[draw, house] (H) [below=of X] {};
+
+  \draw[->] (A) edge[bend right] (H);
+  \draw[->, dashed] (H) edge[bend right]  (B);
+\end{tikzpicture}
+```
+
+```{.tikz}
+%%| format: svg
+%%| filename: movement_case_three
+%%| img-width: 800
+%%| fig-cap: delayed readmission
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, shapes.arrows}
+
+\begin{tikzpicture}[
+  node distance=2cm,
+  >=latex
+]
+  \tikzset{
+    squarx/.style= {
+      regular polygon,
+      regular polygon sides=4
+    }
+  }
+  \tikzset{
+    house/.style= {
+      single arrow,
+      shape border rotate=90,
+      single arrow head extend=0pt,
+      single arrow tip angle=120,
+      minimum height=0.75cm,
+      minimum width=0.75cm
+    }
+  }
+
+  \node[draw, squarx] (A) {A};
+  \node (X) [right=of A] {};
+  \node[draw, squarx] (B) [right=of X] {B};
+  \node[draw, house] (H) [below=of X] {};
+
+  \draw[->] (A) edge[bend right] (H);
+  \draw[->, dashed] (H) edge[bend right] (A); 
+\end{tikzpicture}
+```
+
+Different patterns of movement possible between hospitals and home. (left) direct transfer from one hospital to another, with no discharge home (centre) indirect transfer from one hospital to another, where the patient is discharged to home for some duration (right) delayed readmission, a special case of an idrect transfer, where the patient readmits at the same hospital they were discharged from. Dashed arrows represent movements where the time at the origin may be different to the destiantion.
 :::
+
 
 Here, we are interested in two processes:
 
@@ -81,22 +222,6 @@ These random variables -- $s$ for the discharge process and $\tau$ for the readm
   - A naïve static network model vastly overestimates the spread 
   - Some improvement can be made by using networks and models that incorporate more temporal fidelity, but they do not capture the magnitude of change in the temporal network model
 
-```{python}
-#| echo: false
-import netsim_summariser as summ
-import polars as pl
-import seaborn as sns
-import numpy as np
-from matplotlib import pyplot as plt
-from scipy import stats
-from pathlib import Path
-
-sns.set()
-sns.set_palette('colorblind')
-sns.set_context('paper')
-
-root = Path("../")
-```
 
 ```{python}
 metrics_archives = {
@@ -135,7 +260,11 @@ for model, metrics in processed_results.items():
 
 analytical_expected_hitting_naive = pl.read_csv(root / "outputs/hitting_time_analysis/numer_hitting_time_30indv_chains.csv")
 ana_E_hitT_naive = np.sort(analytical_expected_hitting_naive.select('hitting_time').to_series().to_numpy().flatten())
+```
 
+```{python}
+#| label: fig-ecdf
+#| fig-cap: Empirical cumulative distributions of the observed hitting times to hospitals, where a single hospital is seeded with 30 tracked individuals. A plot of CDF of the analytical expected hitting times is also shown for the naïve static network model.
 plt.figure()
 for model, dist in hitting_time_dists.items():
     plt.plot(dist, np.linspace(0, 1, len(dist), endpoint=False), label=model)
@@ -154,4 +283,227 @@ plt.xlabel('hitting time')
 plt.ylabel('ECDF')
 
 plt.legend(loc='lower right')
+
+sns.despine()
+```
+
+
+
+
+# Supplementary Material
+
+## Multichain Hitting
+
+We compute the analytical solution for $N$ independent Markov chains charaterised by the transition matrix $Q$ as follows.
+
+Denote $U_{\mathcal{I}}(t)$ the probability that no chain has hit the subset of states $\mathcal{I}$ by time $t$, and $v_{\mathcal{I}}(t)$ the same probability, but for a single chain.
+
+Then the expectation of the time for any of the $N$ chains to hit a state in $\mathcal{I}$ is
+
+$$
+\begin{aligned}
+\mathbb{E}[T_\mathcal{I}] &=\int_0^\infty U_{\mathcal{I}}(t) dt\\
+&=\int_0^\infty [v_\mathcal{I}(t)]^N dt
+\end{aligned}
+$$
+
+By noting that $v_{\mathcal{I}}(t)$ must obey the backward equations:
+
+$$ 
+\frac{\mathrm{d}v(t)}{\mathrm{d}t} = Q v(t)
+$$
+
+then we can construct a numerical scheme to evaluate $\mathbb{E}[T_\mathcal{I}]$.
+
+Because the backward equations are linear, we can expect $v_\mathcal{I}(t)$ to be a linear combination of exponentials, and we also know that the real parts of the exponents must be negative, since the survival probability must tend towards zero over time.
+We could write that 
+$$v_\mathcal{I}(t) = \sum_{n=1}^{M} a_n \exp(c_n t)$$
+
+Thus, the integral for $\mathbb{E}[T_\mathcal{I}]$ can be evaluated with an Gauss-Laguerre quadrature scheme: 
+$$\int_0^\infty f(t) \exp(-t) dt \approx \sum_{k=1}{K} w_k f(t_k)$$
+
+We can predetermine the locations $t_k$ to evaluate $v_\mathcal{I}(t)$ at (which is in turn solved using a numerical ODE solver), and then compute the integral using a weighted sum.
+
+We observed that the G-L scheme could only converge when the number of locations, $K$, was large. This was it needed to capture "enough" of the decay behaviour of components of $v(t)$ that have exponents where $|Re(c_i)|$ is small(est).
+
+We can make a scaling adjustment to the time variable $t$ where we have instead $t = \sigma s$.
+Then $$\int_0^\infty g(t) dt = \sigma \int_0^\infty g(s) ds$$.
+
+## Comparing Static and Snapshot Models
+
+As described in the main text, the static and snapshot network models implement the readmission mechanic differently. This leads to a non-intuitive ordering of their hitting time distributions at early time.
+
+```{python}
+#| label: fig-early-time-ecdf
+#| fig-cap: The ECDF at early time
+plt.figure()
+for model, dist in hitting_time_dists.items():
+    plt.plot(dist, np.linspace(0, 1, len(dist), endpoint=False), label=model)
+
+plt.plot(ana_E_hitT_naive, np.linspace(0, 1, len(ana_E_hitT_naive)), 
+         label='naive\nanalytical', linestyle='dashed')
+
+plt.xlim(-5, 370)
+plt.ylim(-0.01, 0.15)
+
+plt.xlabel('hitting time')
+plt.ylabel('ECDF')
+
+plt.legend(loc='lower right')
+
+sns.despine()
+```
+
+1. The snapshot curve initially matches the temporal curve, and begins slower/lower than the static curve.
+2. The snapshot and static curve overlap at around $t=170$ days, whereafter the snapshot curve is faster/higher than the static curve.
+3. The snapshot curve is "bumpy" in comparison to the other curves.
+
+To address the last point, this is due to th exhaustion of tracekd individuals within the duration of a snapshot. Because tracked individuals are held at home until the end of the snapshot, the number of tracke individuals that can move to new hospitals decreases over the duration of a given snapshot.
+Relatedly, the snapshot and temporal curve agree for the duration of the first snapshot, since for that particular time discretisation window, there are only movements on the direct transfer layer (no indirect transfer would occur until the start of the next snapshot/time discretisation).
+
+The relative positions/speeds of the snapshot and static curves are not necessarily so simple to explain.
+
+First we will examine why the static network yields faster spread than the series of static snapshots.
+We propose that this is caused by the delay in connectedness of the snapshot network model.
+```{python}
+NO_CACHE = False 
+connectedness_file = root / "outputs/snapshot_movement_analysis/overlay_connectedness.parquet"
+
+if NO_CACHE:
+    Gs = [
+        ig.Graph.Read(root / f"data/conc_tempo_14_detailed/{i:04d}.graphml")
+        for i in range(0, 3626+14, 14)
+    ]
+
+    # remove problem vertex (isolated hospital)
+    problem_vertex = 4454
+    for graph in Gs:
+        graph.delete_vertices(graph.vs.select(name_eq=problem_vertex).indices)
+
+    connectedness = []
+    component_sizes = []
+    for i in range(len(Gs)):
+        U = ig.union(Gs[:i+1])
+        connectedness.append(U.is_connected())
+        component_sizes.append(Counter(map(len, U.connected_components())))
+
+    df = pl.from_dicts([
+        {'snapshot': i, 'fully_connected': full_conn, 'component_size': k, 'count': v} 
+        for i, (full_conn, comp_counter) in enumerate(zip(connectedness, component_sizes)) 
+        for k,v in comp_counter.items()
+    ])
+
+    df.write_parquet(connectedness_file)
+else:
+    df = pl.read_parquet(connectedness_file)
+```
+
+```{python}
+#| label: fig-connected-components
+#| fig-cap: Plot of (strongly) connected components of the aggregated graph of the network snapshots. (Above) the size of the dominant connected component over time (Below) number of (strongly) connected components.
+fig, axs = plt.subplot_mosaic([['c'], ['c'], ['b']], sharex=True, layout='constrained')
+
+component_stats = df.group_by('snapshot').agg(
+    pl.col('component_size').max().alias('dominant component size'),
+    pl.col('count').sum().alias('number of components')
+).with_columns(time = pl.col('snapshot') * 14).sort('snapshot')
+
+sns.lineplot(component_stats, x='time', y='dominant component size', ax=axs['c'])
+sns.lineplot(component_stats, x='time', y='number of components', ax=axs['b'])
+```
+
+We see in @fig-connected-components that 
+
+```{python}
+
+S = ig.Graph.Read(root / "data/concordant_networks/trimmed_static_base_1_threshold_4.graphml")
+
+static_df = pl.from_dict(
+    {
+        'indirect': S.es['indirect_weight'],
+        'direct': S.es['direct_weight'],
+        'source': S.es['source_loc'],
+        'target': S.es['dest_loc'],
+    }
+).cast(pl.Int64)
+
+size_df = pl.read_csv(root/ "data/concordant_networks/size_14.csv")
+
+static_df = (
+  static_df
+  .join(
+    size_df, 
+    left_on='source', 
+    right_on='hospital'
+  )
+  .with_columns(
+    dep_rate = (
+      pl.col('indirect').cast(pl.Float64) 
+      / pl.col('estimated_size') 
+      / S['time_span']
+    ),
+  )
+)
+```
+
+```{python}
+NOCACHE = False 
+
+snapshot_table_file = root / "outputs/snapshot_movement_analysis/combined_outwards.parquet"
+
+if NO_CACHE:
+    snapshot_graph_tables = []
+    for i in range(0, 3626+14, 14):
+        graph = ig.Graph.Read(root / f"data/conc_tempo_14_detailed/{i:04d}.graphml")
+        problem_vertex = 4454
+        graph.delete_vertices(graph.vs.select(name_eq=problem_vertex).indices)
+        snapshot_graph_tables.append(
+            (pl.from_dict({
+                'source': graph.es['source'],
+                'target': graph.es['target'],
+                'snapshot_direct': graph.es['weight'],
+                'snapshot_indirect': graph.es['departures'],
+                'time': pl.lit(i)
+            })
+            .cast({
+                'source': pl.Int64,
+                'target': pl.Int64,
+                'snapshot_direct': pl.Int64,
+                'snapshot_indirect': pl.Int64,
+                'time': pl.Int64(),
+            })
+            .with_columns(time=pl.lit(i))
+            )
+        )
+    snapshot_table = pl.concat(snapshot_graph_tables)
+    snapshot_table.write_parquet(snapshot_table_file)
+else:
+    snapshot_table = pl.read_parquet(snapshot_table_file)
+
+joined_table = snapshot_table.join(static_df, on=['source', 'target'])
+
+SS_WIDTH = 14
+
+joined_table = (
+    joined_table
+    .with_columns(
+        ss_direct_rate = pl.col('snapshot_direct').cast(pl.Float64) / pl.col('estimated_size') / SS_WIDTH,
+        ss_indirect_rate = pl.col('snapshot_indirect').cast(pl.Float64) / pl.col('estimated_size') / SS_WIDTH,
+        st_direct_rate = pl.col('direct').cast(pl.Float64) / pl.col('estimated_size') / S['time_span'],
+    )
+)
+```
+
+```{python}
+deviations = (
+  joined_table
+  .filter(pl.col('dep_rate') > 0.0)
+  .with_columns(
+    deviation = pl.col('ss_indirect_rate') - pl.col('dep_rate')
+  )
+)
+
+plt.hist(deviations.select('deviation').to_series().to_numpy(), bins=101);
+plt.xlabel("Departure Rate Deviation (Snapshot Edge Weight - Static Edge Weight)")
+plt.yscale('log')
 ```
