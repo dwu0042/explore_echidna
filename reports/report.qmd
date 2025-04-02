@@ -76,9 +76,17 @@ define a vertex $v_i = (x_i, t_i)$ made up of a location and time resp. -->
 Antimicrobial resistance poses a great threat to human health and development. [@murray_global_2022]
 Globally, it poses a large burden, operationally and economically, on hospital systems.
 In Australia, we see [significant] economic burden from AMR.
-this impact could become more significant if we had incursion and subsequent establishment of new [strains] of AMR. One X of interest is carbapenemase-producing enterobacteriacea (CPE). Australia has an endemic strain of CPE -- IMP4 -- but this is at a relatively low level. This already causes some level of burden, and introduced strains would further multiply this.
+this impact could become more significant if we had incursion and subsequent establishment of new [strains] of AMR. 
+One X of interest is carbapenemase-producing enterobacteriacea (CPE). 
+Australia has an endemic strain of CPE -- IMP4 -- but this is at a relatively low level. 
+This already causes some level of burden, and introduced strains would further multiply this.
 
-Understanding of the spread of AMR through hospital systems has been studied in the past as a network phenomenon. The movement of patients through the hospital systems induced by referrals can be represented as edges between hospital nodes. However, these networks are usually presented as static, where movement over a large period of time has been aggregated to form a single network. It is known, especially in other applications, that temporal networks can display different behaviour than the static equivalents. In this paper, we investigate these differences using the Victorian hospital system as a baseline for comparison. In particular, we investigate the impacts of the inclusion of modelling the period of time that patients spend at home between admissions, and the effect of approximating the granularity of the temporality]]]]].
+Understanding of the spread of AMR through hospital systems has been studied in the past as a network phenomenon [@donker_patient_2010]. 
+The movement of patients through the hospital systems induced by referrals can be represented as edges between hospital nodes. 
+However, these networks are usually presented as static, where movement over a large period of time has been aggregated to form a single network. 
+It is known, especially in other applications, that temporal networks can display different behaviour than the static equivalents. 
+In this paper, we investigate these differences using the Victorian hospital system as a baseline for comparison. 
+In particular, we investigate the impacts of the inclusion of modelling the period of time that patients spend at home between admissions, and the effect of approximating the granularity of the temporality]]]]].
 
 
 # Methods
@@ -94,6 +102,8 @@ This data was aggregated into time-discretised temporal networks (described belo
 Some exploratory analysis of this data was done in by [@lydeamore_carbapenemase-producing_2024].
 
 ## Existing Network Modelling {#sec-network-modelling}
+
+Existing studies treating hospital systems as networks 
 
 A network or graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ is made up of nodes or vertices $\mathcal{V} = \{v_1, v_2, \dots\}$ and edges $\mathcal{E} = \{e_{ij} \coloneqq (v_i, v_j)\}$ that join those nodes. Each edge $e_{ij}$ can be assigned attributes, including an edge weight $w_{ij}$.
 For our application, this edge weight will typically represent the number of observed movements in a given time period. Thus the network can encode a representation of the movement between hospitals over a given time period.

@@ -1,12 +1,23 @@
 ---
-title: "DRAFT: Towards a paper on patient movement in the Victorian hospital system"
-subtitle: "an exercise in trying to avoid reality"
-author: "X-- xXx THE AUTHORS xXx --X"
+title: 'DRAFT: Towards a paper on patient movement in the Victorian hospital system'
+subtitle: an exercise in trying to avoid reality
+author: X-- xXx THE AUTHORS xXx --X
 filters:
-  - tikz 
+  - tikz
 format: html
 execute:
   echo: false
+jupyter:
+  jupytext:
+    text_representation:
+      extension: .qmd
+      format_name: quarto
+      format_version: '1.0'
+      jupytext_version: 1.16.4
+  kernelspec:
+    display_name: Python 3 (ipykernel)
+    language: python
+    name: python3
 ---
 
 ```{python}
@@ -222,7 +233,6 @@ These random variables -- $s$ for the discharge process and $\tau$ for the readm
   - A naïve static network model vastly overestimates the spread 
   - Some improvement can be made by using networks and models that incorporate more temporal fidelity, but they do not capture the magnitude of change in the temporal network model
 
-
 ```{python}
 metrics_archives = {
     'temporal': root / 'simulations/zero_sims/temporal/metrics_30s.parquet',
@@ -264,7 +274,7 @@ ana_E_hitT_naive = np.sort(analytical_expected_hitting_naive.select('hitting_tim
 
 ```{python}
 #| label: fig-ecdf
-#| fig-cap: Empirical cumulative distributions of the observed hitting times to hospitals, where a single hospital is seeded with 30 tracked individuals. A plot of CDF of the analytical expected hitting times is also shown for the naïve static network model.
+#| fig-cap: 'Empirical cumulative distributions of the observed hitting times to hospitals, where a single hospital is seeded with 30 tracked individuals. A plot of CDF of the analytical expected hitting times is also shown for the naïve static network model.'
 plt.figure()
 for model, dist in hitting_time_dists.items():
     plt.plot(dist, np.linspace(0, 1, len(dist), endpoint=False), label=model)
@@ -285,10 +295,8 @@ plt.ylabel('ECDF')
 plt.legend(loc='lower right')
 
 sns.despine()
+
 ```
-
-
-
 
 # Supplementary Material
 
@@ -352,6 +360,8 @@ plt.ylabel('ECDF')
 plt.legend(loc='lower right')
 
 sns.despine()
+
+plt.savefig("early_time_ecdf.png", dpi=360)
 ```
 
 1. The snapshot curve initially matches the temporal curve, and begins slower/lower than the static curve.
@@ -365,6 +375,7 @@ The relative positions/speeds of the snapshot and static curves are not necessar
 
 First we will examine why the static network yields faster spread than the series of static snapshots.
 We propose that this is caused by the delay in connectedness of the snapshot network model.
+
 ```{python}
 NO_CACHE = False 
 connectedness_file = root / "outputs/snapshot_movement_analysis/overlay_connectedness.parquet"
@@ -415,7 +426,6 @@ sns.lineplot(component_stats, x='time', y='number of components', ax=axs['b'])
 We see in @fig-connected-components that 
 
 ```{python}
-
 S = ig.Graph.Read(root / "data/concordant_networks/trimmed_static_base_1_threshold_4.graphml")
 
 static_df = pl.from_dict(
@@ -495,6 +505,8 @@ joined_table = (
 ```
 
 ```{python}
+#| label: fig-deviations-snapshot-vs-static
+#| fig-cap: Deviation between indirect transfer rate of the static (mean) vs snapshot (time-varying) networks.
 deviations = (
   joined_table
   .filter(pl.col('dep_rate') > 0.0)
