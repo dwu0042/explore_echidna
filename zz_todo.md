@@ -271,3 +271,7 @@ various other folders for scripts and notebooks and experiments
 and a potentially unified output folder - though we can and should reconstruct outputs in quarto in computation cells.
 
 For release, we should write tests for the ocre library code, and we need to write up the entry points in the pyproject.toml
+
+[3/04]
+
+Add refs in todobib

@@ -18,12 +18,14 @@ format:
 bibliography: refs.bib
 csl: plos.csl
 filters:
-    - diagram
+    - tikz 
 jupyter: python3
 execute:
     echo: false
     warning: false
     error: false
+    eval: false
+callout-appearance: simple
 ---
 
 ```{python}
@@ -103,14 +105,18 @@ Some exploratory analysis of this data was done in by [@lydeamore_carbapenemase-
 
 ## Existing Network Modelling {#sec-network-modelling}
 
-Existing studies treating hospital systems as networks 
+There has been some existing work that analyse hospital systems using the framework of network analysis. 
+They define a network consisting of hospitals as nodes, connected by edges that have weights representative of the amount of patient movement between those hospitals.
+Using these networks, hospitals and links that are important to movement around the hospital system by analysing measures of centrality and clustering.
+<!-- Thus the network can encode a representation of the movement between hospitals over a given time period. -->
 
-A network or graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ is made up of nodes or vertices $\mathcal{V} = \{v_1, v_2, \dots\}$ and edges $\mathcal{E} = \{e_{ij} \coloneqq (v_i, v_j)\}$ that join those nodes. Each edge $e_{ij}$ can be assigned attributes, including an edge weight $w_{ij}$.
-For our application, this edge weight will typically represent the number of observed movements in a given time period. Thus the network can encode a representation of the movement between hospitals over a given time period.
+A weighted, directed network can be used to construct a Markov chain that in turn can be analysed or simulated to understand 
 
-We can use the network to construct a Markov chain, where the expected rate of movement is governed by the observed movement in the data. For some edge $e_{ij}$ with a number of observed movements $w_{ij}$ over some time period $\tau$, the rate of movement along that edge $\lambda_{ij} = w_{ij} / \tau$, such that the time between movement events along that edge are exponentially distributed $\text{Exp}(\lambda_{ij})$.
+For some edge $e_{ij}$ with a number of observed movements $w_{ij}$ over some time period $\tau$, the rate of movement along that edge $\lambda_{ij} = w_{ij} / \tau$, such that the time between movement events along that edge are exponentially distributed $\text{Exp}(\lambda_{ij})$.
 
-[Stuff about previous implementations of this idea]
+:::{.callout-note} 
+[Stuff about previous implementations of this idea] 
+:::
 
 
 ## Explicitly Temporal Models
@@ -386,7 +392,6 @@ so that
 $(\lambda_\dagger (1-p))^{-1} = [\lambda^{-1} (1- \exp(-\lambda \Omega)) - \Omega \exp(-\lambda \Omega)]  \frac{1}{\exp(-\lambda \Omega)}$
 
 We can then say that 
-:::
 
 
 <!-- In the model without indirect transfer, we can compute the expected hitting time $k_{1}$ from $S_0$ to $S_1$ as
