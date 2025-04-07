@@ -1,19 +1,11 @@
----
-title: "Section: Model of Stochastic Processes and Network Models"
-filters:
-  - tikz 
-format: html
-execute:
-  echo: false
----
 
-Notations
+<!-- Notations
 
 - $u,v$ for locations; discrete, usually subscript
 - $s,t$ for times; continuous, usually function inputs/variables
 - $T, \omega, \Omega$ for characteristic times
 - $N$ as a size variable
-- $x, y, z$ are state variables; often functions of location and time
+- $x, y, z$ are state variables; often functions of location and time -->
 
 :::{.hidden}
 $$
@@ -21,8 +13,6 @@ $$
 \newcommand{\ceil}[1]{\lceil#1\rceil}
 $$
 :::
-
-## General Sketch
 
 :::{#fig-general-diagram}
 ```{.tikz}
@@ -56,7 +46,7 @@ $$
   \node[draw, squarx] (A) {$u$};
   \node (X) [right=of A] {};
   \node[draw, squarx] (B) [right=of X] {$v$};
-  \node[draw, house] (H) [below=of X] {};
+  \node[draw, house] (H) [below=of X] {$h_{uv}$};
   \node[draw, circle] (D) [above=of X] {$\emptyset$};
 
   \draw[->] (A) edge node[above]{$d_{uv}(s, t)$}  (B);
@@ -66,7 +56,7 @@ $$
 \end{tikzpicture}
 ```
 
-Sketch of processes modelled
+Sketch of the generalised model with processes of 1. permanent discharge ($u \to \emptyset$), 2. direct transfer ($u \to v$), 3. return home ($u \to h_{uv}$, 4. readmission $h_{uv} \to v$).
 :::
 
 Here, $u$ and $v$ are locations (potentially identical locations), $s$ and $t$ are times. We take that $t \geq s$.
@@ -85,32 +75,25 @@ $$\begin{aligned}
 \lambda(z_{uv}(t) \to v(t)) &= \rho_{uv}(s, t)
 \end{aligned}$$
 
-Note that 
-
-$$ \lambda(U \to V) = \lambda $$
-
-represents that in some time step $\Delta t$, the number of individuals that move from state $U$ to state $V$ is distributed as 
-
-$$ \mathrm{Poisson}(\lambda x_U \Delta t) $$.
-
+We note that as a consequence of the model structure, the hazards can also be interpreted as modelling the hodling time an individual patient spends in each state. 
 
 ### Naïve Static Model
 
-For both the naïve and improved static network models, we have that the observations of $w$ are taken over a time period of $T_\Sigma$.
+We can begin with a simple naive static model. This model will have the edge weights between healthcare facilities that represent the number of transfers from the source node to the target node over a certain period of observation time ($T_\Sigma$), regardless of how long the patient is absent from the healthcare facilities between initial discharge and subsequent readmission.
 
-In the naïve static model , we have that:
-
+With reference to the general model above, the hazards of the  naïve static model are:
 $$d_{uv}(s,t) = d_{uv} = \frac{\sum_{s,t} w_{uv}(s,t)}{T_\Sigma N_u}$$
 $$\eta_{uv}(s,t) = \eta_{uv} = 0$$
 $$\rho_{uv}(s,t) = \rho_{uv} = 0$$
 
-That is, all movements are instantaneous, and the rate of movement is the mean rate of movement over the entire observation period.
+That is, all movements are instantaneous, and the rate of movement is the mean rate of movement over the entire observation period. This is an oversimplification of the work done in @donker, but represents a "worst" case model of temporal fidelity that can be benchmarked against.
 
 ### Improved Static Model
 
-For the improved static model, we choose some threshold value $\omega$ that delineates direct and indirect transfers.
+We can introduce the concept of "indirectness" by allowing individuals to return home, in an "improved" static model.
+In this model, we choose some threshold value $\omega$ that delineates direct transfers that occur "instantaneously" and indirect transfers that require a patient to first move to an intermediary "home" state before readmitting.
 
-We will have:
+In comparison to the naive model, we will have non-zero hazards $\eta$ and $\rho$:
 
 $$d_{uv}(s,t) = d_{uv} =  \frac{\sum_{s,t: (t-s) < \omega} w_{uv}(s,t)}{T_\Sigma N_u}$$
 $$\eta_{uv}(s,t) = \eta_{uv} = \frac{\sum_{s,t: (t-s) \geq \omega} w_{uv}(s,t)}{T_\Sigma N_u}$$
@@ -120,8 +103,14 @@ Here, we model the rate of indirect transfers $\eta$ similarly to the rate of di
 
 ### Snapshot Model
 
-For the snapshot model, we choose a snapshot duration $\omega$. This defines the threshold duration of an indirect transfer.
+Of course, as the hospital system changes over time, the rate of patient transfers, and thus the hazards represented in our model should also change.
+We see evidence of this in the overall rates of movement in the network over time
 
+.... need a plot here of total direct/direct over time
+
+We approach this using static network snapshots of the hospital system over time. 
+
+For the snapshot model, we choose a snapshot duration $\omega$. This defines the threshold duration of an indirect transfer.
 This introduces an new intermediary state variable $z'$ that contains the individuals that would enter $z$ within the duration of a given snapshot $[t, t+\omega]$, so that they do not immediately readmit to their next hospital.
 This alters the indirect transfer processes to
 
@@ -131,9 +120,7 @@ $$\begin{aligned}
 \end{aligned}$$
 
 where $\delta(\cdot)$ is the Dirac delta function.
-
 Alongside this, we also compute from the data, the number of patients "at home" at a given time, in order to inform the denominator for the process from $z'$ to $z$. We denote this quantity $H_{uv}(t)$
-
 We will have that:
 
 $$d_{uv}(s,t) = d_{uv}(s) = \frac{\sum_{t: (t-s) < \omega} w_{uv}(s,t)}{\omega N_u}$$
@@ -143,13 +130,9 @@ $$\rho_{uv}(s,t) = \rho_{uv}(t) = \frac{\sum_{s: (t-s) \geq \omega} {w_{uv}(s, t
 ### Temporal Model
 
 For the temporal network, we make a choice of the time discretisation $\omega$. That is, events that occur within a time window $[\tau, \tau+\omega)$ are collapsed and aggregated to occur at time $\tau$. Over the observation (and simulation) period, we will have a series of time window boundaries $\{\tau_0, \tau_1, \dots\}$. We denote the smallest value in that set larger than a given time $t$ to be $\ceil{t}_\omega$
-
 For the readmission process, we assume that individuals that would readmit within a given time window $[\tau, \tau+\omega)$ do so uniformly. 
-
 This yields:
 
 $$d_{uv}(s, t) = \frac{\sum_{t: (t-s) < \omega} w_{uv}(s, t)}{\omega N_u}$$
 $$\eta_{uv}(s, t) = \frac{\sum_{t: (t-s) \geq \omega} w_{uv}(s, t)}{\omega N_u}$$
 $$\rho_{uv}(s,t) = \frac{1}{\ceil{t}_\omega - t}$$
-
-The readmission process thus has a uniform hazard.

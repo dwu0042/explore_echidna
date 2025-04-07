@@ -122,6 +122,24 @@ This type of construction is
 :::
 
 
+## Network Models for Temporal Fidelity
+
+Static networks provide a very interpretable model of influence of nodes in the system: network measures allow for some semblance of understanding of aggregate aspects of the network and its components. However, dynamic models derived from those static networks miss important dynamics and temporal qualities of the system they are modelling.
+It is well-known that temporal networks exhibit different behaviour to analogous static networks: they have lower connectivity ....
+
+In the context of the spread of AMR between healthcare facilities, these differences can lead to misleading results about the dynamics of the [disease], and related control mechanisms and policies.
+Using the detailed linkage data from the VAED, we can constrct a relatively detailed temporal network, which can then be projected in various network representations with different temporal fidelity.
+We roughly consider three aspects of the dynamics:
+
+1. the representation of the time patients spend outside the healthcare system (i.e. at home)
+1. the time-varying number of transfers (direct and indirect) between facililties
+1. the distribution of the inter-admission times for patients that are discharged and subsequently readmit to the system
+
+
+{{< include _model.qmd >}}
+
+
+
 ## Explicitly Temporal Models
 Previous analyses of movement and spread of contagions through these networks have made assumptions that result in the weight $w_{ij}$ of any given edge being constant over time, i.e. the network is static. [.....Typically, this is a result of performing an aggregation, and approximating the patient movement between hospitals as being Poisson, or equivalently that the residence time  hospitals being exponentially distributed......]
 As shown in @fig-readmission-window, these approximations lead to misleading dynamics on the hospital system of Victoria: the empirical distribution of inter-transfer times [....]. A naïve static approximation that matches the mean readmission window will be inaccurate; in the following, we will attempt to resolve this problem in three increasingly granular ways:
@@ -444,6 +462,11 @@ plt.ylabel('Starting hospital');
 
 
 ## Movement Simulation Studies
+We simulate the movement of individuals without infection dynamics (for example, in the case of a noncommunicable disease) on each of the different types of network.
+$X_0 = 5$ individuals are seeded in a single healthcare facility at the start of each simulation, and move through the network for $T = 8$years.
+
+
+
 
 <!-- 
 To isolate the effect of the projections on the movement of patients, we can simulate the model with parmeters $\beta = 0, \eta=0$. -->
