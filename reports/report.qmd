@@ -86,7 +86,7 @@ This already causes some level of burden, and introduced strains would further m
 Understanding of the spread of AMR tharity of the temporality]]]]].
 
 
-# Methods
+# Models and Methods
 
 ## Setting and data sources
 
@@ -110,7 +110,7 @@ In this paper, we investigate these differences using the Victorian hospital sys
 In particular, we investigate the impacts of the inclusion of modelling the period of time that patients spend at home between admissions, and the effect of approximating the granulovement around the hospital system by analysing measures of centrality and clustering.
 <!-- Thus the network can encode a representation of the movement between hospitals over a given time period. -->
 
-A weighted, directed network can be used to construct a Markov chain that in turn can be analysed or simulated to understand 
+A weighted, directed network can be used to construct a Markov chain that in turn can be analysed or simulated to understand the dynamics of a spreading infectious disease.
 
 For each edge $e_{ij}$ with a number of observed movements $w_{ij}$ over some time period $\tau$, 
 we can construct a reaction that has a hazard function $\lambda_{ij} = w_{ij} / \tau$. This implicitly constructs a process that has inter-event times (i.e. times between distinct patient movements) that are exponentially distributed $\text{Exp}(\lambda_{ij})$.
@@ -138,6 +138,46 @@ We roughly consider three aspects of the dynamics:
 
 {{< include _model.qmd >}}
 
+These models have distinct advantages and disadvantages: the "simpler" models are more amenable to analysis, but the more "complex" models represent more fidelity.
+For example, the snapshot network model allows us to analyse each static snapshot as its own graph, and then subsequently aggregate those results as a time series; this is a much smaller algorithmic complexity compared to any analogous analysis that could be done on the full temporal network.
+
+In the extreme case, we can analyse a toy model in order to demonstrate the difference between the naïve and improved static network models.
+
+Consider a two-node network, where patients transfer from hospital A to hospital B. Suppose over some time period $T$ there are $n_d$ direct transfers and $n_i$ indirect transfers.
+In the naïve model, the expected hitting time is equal to $\frac{T}{n_d+ n_i}$.
+In the improved model, we suppose we also have the mean inter-admission time of $\tau$.
+Then the expected hitting times $k$ can be solved by a linear system [@Norris_Markov_Chains_1997]:
+
+$$
+\begin{bmatrix}
+\frac{T}{n_d+n_i} & -\frac{T}{n_d} & -\frac{T}{n_i} \\
+0 & 1 & 0 \\
+0 & -\frac{1}{\tau} & \frac{1}{\tau}
+\end{bmatrix} \begin{bmatrix} k_A \\ k_B \\ k_H \end{bmatrix}
+= \begin{bmatrix} 1 \\ 0 \\ 1\end{bmatrix}
+$$
+
+which solves to give $k_A = \frac{T}{n_d+n_i}\left(1 + \frac{n_i}{T} \tau \right)$.
+Somewhat expectedly, the expectation of the time taken to reach hospital B from hospital A is longer by a factor related to the number of indirect movements and their average inter-admission period.
+
+# Simulation Experiments
+
+Beyond simple models, there is vanishingly small possibility of finding tractable analystical expressions for the hitting times.
+
+## Experimental Setup
+
+
+
+
+
+
+
+
+
+<hr />
+
+
+# APDX
 
 
 ## Explicitly Temporal Models

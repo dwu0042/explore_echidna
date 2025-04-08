@@ -296,6 +296,7 @@ plt.legend(loc='lower right')
 
 sns.despine()
 
+plt.savefig("early_time_ecdf.png", dpi=360)
 ```
 
 # Supplementary Material
@@ -348,8 +349,8 @@ plt.figure()
 for model, dist in hitting_time_dists.items():
     plt.plot(dist, np.linspace(0, 1, len(dist), endpoint=False), label=model)
 
-plt.plot(ana_E_hitT_naive, np.linspace(0, 1, len(ana_E_hitT_naive)), 
-         label='naive\nanalytical', linestyle='dashed')
+#plt.plot(ana_E_hitT_naive, np.linspace(0, 1, len(ana_E_hitT_naive)), 
+#         label='naive\nanalytical', linestyle='dashed')
 
 plt.xlim(-5, 370)
 plt.ylim(-0.01, 0.15)
