@@ -6,7 +6,7 @@ title: Rare Pathing
 ```{python}
 import igraph as ig
 import numpy as np
-import network_simulation as netsim
+from echidna import network_simulation as netsim
 
 from matplotlib import pyplot as plt
 import seaborn as sns
@@ -35,19 +35,44 @@ G = ig.Graph(
 R = ig.Graph(
     n=4, 
     edges=[
-        (0, 1),
-        (1, 2),
-        (2, 0),
+        # (0, 1),
+        # (1, 2),
+        # (2, 0),
         (0, 3),
     ], 
     directed=True, 
     edge_attrs={'weight':[
-        0,
-        0,
-        0,
+        # 0,
+        # 0,
+        # 0,
         100,
     ]}
 )
+```
+
+```{python}
+#| label: fig-graphs
+fig, axs = plt.subplots(ncols=2)
+axz = axs.flatten()
+
+ig.plot(
+    G,
+    target=axz[0],
+    edge_label=G.es['weight'],
+    layout='circle',
+)
+
+ig.plot(
+    R,
+    target=axz[1],
+    edge_label=R.es['weight'],
+    layout='circle',
+)
+
+axz[0].set_xlabel('regular')
+axz[0].spines[:].set_visible(True)
+axz[1].set_xlabel('rare')
+axz[1].spines[:].set_visible(True)
 ```
 
 ```{python}
@@ -112,16 +137,54 @@ snapshot_sim = netsim.SnapshotNaive(
 snapshot_sim.fixedseed(0, 1000)
 ```
 
+run and analyse the snapshot stuff
 ```{python}
 N_SIMS = 1000
 
-histories = []
+snapshot_histories = []
 for it_ in range(N_SIMS):
     snapshot_sim.reset(soft=True)
     snapshot_sim.simulate(30, nostop=True)
-    histories.append(np.array(snapshot_sim.history))
+    snapshot_histories.append(snapshot_sim.history)
 ```
 
+
+```{python}
+timez = [snapshot_sim.ts[x] 
+         for hist in snapshot_histories 
+         for x in np.flatnonzero(hist[-1,:])[:1]
+        ]
+
+plt.hist(timez)
+```
+
+run and analyse static
+```{python}
+static_histories = []
+for it_ in range(N_SIMS):
+    static_sim.reset(soft=True)
+    static_sim.simulate(30, nostop=True)
+    static_histories.append(static_sim.history)
+```
+
+```{python}
+static_timez = [static_sim.ts[x] 
+         for hist in static_histories 
+         for x in np.flatnonzero(hist[-1,:])[:1]
+        ]
+```
+```{python}
+#| label: fig-cumhist
+plt.xlabel('hitting time')
+# plt.ylabel('count')
+# plt.hist(static_timez, histtype='step', bins=31, label='static')
+# plt.hist(timez, histtype='step', bins=4, label='snapshot')
+plt.ylabel('cumulative count')
+plt.hist(static_timez, cumulative=True, histtype='step', bins=31, label='static')
+plt.hist(timez, cumulative=True, histtype='step', bins=4, label='snapshot')
+plt.legend()
+# plt.yscale('log')
+```
 
 ## Indirect rare pathing
 
