@@ -166,9 +166,11 @@ Beyond simple models, there is vanishingly small possibility of finding tractabl
 
 ## Experimental Setup
 
+We initialise the state of a simulation by seeding 30 individuals in a single facility.
+We then simulate the system forwards in time until a fixed end time.
 
-
-
+Each starting facility is looped over to be the starting facility, and realisations are acquired 20 times for each starting facility.
+This gives pairs of hitting times between the (known) starting facility and target facility (which we get for all non-starting facilities by the end of the simulation realisation)
 
 
 
