@@ -627,7 +627,8 @@ for index in zip(*np.triu_indices_from(axs, k=1)):
 
 # Discussion
 
-The modelling of patient transfers between hospitals has historically been done by using static networks.
+The modelling of patient transfers between hospitals has historically been done by using static networks. We show here that this can lead to misleading estimates of the extent of the spread of patients over time. This has implications for surveillance and control of infections that are transferred between healthcare facilities by patients, such as CPE.
+
 
 
 
@@ -728,3 +729,19 @@ We remove self-loops from the static network; we attempt one model without self-
 Network analysis of the explicitly-temporal network is difficult, since the number of nodes is relatively large ($N \sim N_x \times N_t$), and inversely scales with the temporal discretisation chosen ($N_t \sim 1/W$).
 
 We can instead look at the series of static network induced by projection onto the locations at each time point. This allows 
+
+
+
+
+## Estimation of Hospital Capacity
+
+Central to our model of the movement dynamics is the quantity $N_u$, the "size" of each hospital.
+We assume that this is constant over time, which is rather dubious, since hospitals can be reconfigured, expanded, or shrunk to meet administrative and operational needs.
+
+We make a few assumptions to reach the hospital size estimates:
+
+1. Healthcare facilities, on average, churn a number patients the equivalent of their size within a day.
+2. Some proportion of these churned individuals are readmissions to the same facility.
+3. There is a minimum size of 5.
+
+Then the size can be approximated as the number of transfers (that are not self-transfers) ...

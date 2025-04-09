@@ -71,8 +71,8 @@ The governing equations can be roughly expressed as a function of the hazards of
 $$\begin{aligned}
 \lambda(u(s) \to \emptyset) &= \zeta_u(s)\\
 \lambda(u(s) \to v(t)) &= d_{uv}(s, t)\\
-\lambda(u(s) \to z_{uv}(t)) &= \eta{uv}(s, t)\\
-\lambda(z_{uv}(t) \to v(t)) &= \rho_{uv}(s, t)
+\lambda(u(s) \to z_{uv}(s, t)) &= \eta_{uv}(s, t)\\
+\lambda(z_{uv}(s, t) \to v(t)) &= \rho_{uv}(s, t)
 \end{aligned}$$
 
 We note that as a consequence of the model structure, the hazards can also be interpreted as modelling the hodling time an individual patient spends in each state. 
@@ -115,8 +115,8 @@ This introduces an new intermediary state variable $z'$ that contains the indivi
 This alters the indirect transfer processes to
 
 $$\begin{aligned}
-\lambda(u(s) \to {z'}_{uv}(t)) &= \eta_{uv}(s, t)\\
-\lambda({z'}_{uv}(t) \to z_{uv}(t)) &= \delta(t \mathrm{ mod } \omega)\\
+\lambda(u(s) \to {z'}_{uv}(s)) &= \sum_t \eta_{uv}(s, t)\\
+\lambda({z'}_{uv}(t) \to z_{uv}(t)) &= \delta(t \mod\omega)\\
 \end{aligned}$$
 
 where $\delta(\cdot)$ is the Dirac delta function.

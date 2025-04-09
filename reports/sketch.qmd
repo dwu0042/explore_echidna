@@ -352,8 +352,8 @@ for model, dist in hitting_time_dists.items():
 #plt.plot(ana_E_hitT_naive, np.linspace(0, 1, len(ana_E_hitT_naive)), 
 #         label='naive\nanalytical', linestyle='dashed')
 
-plt.xlim(-5, 370)
-plt.ylim(-0.01, 0.15)
+plt.xlim(-5, 500)
+plt.ylim(-0.01, 0.2)
 
 plt.xlabel('hitting time')
 plt.ylabel('ECDF')
@@ -362,7 +362,7 @@ plt.legend(loc='lower right')
 
 sns.despine()
 
-plt.savefig("early_time_ecdf.png", dpi=360)
+# plt.savefig("early_time_ecdf.png", dpi=360)
 ```
 
 1. The snapshot curve initially matches the temporal curve, and begins slower/lower than the static curve.
