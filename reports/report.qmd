@@ -162,19 +162,20 @@ Somewhat expectedly, the expectation of the time taken to reach hospital B from 
 
 # Simulation Experiments
 
-Beyond simple models, there is vanishingly small possibility of finding tractable analystical expressions for the hitting times.
+Beyond simple models, there is vanishingly small possibility of finding computable analytical expressions for the hitting times.
+Instead we examine the empirical distributions from simulating the dynamics.
+To do this, we iterate over all facilities, seeding 30 individuals in that single facility, and simulating until a fixed end time, using a discrete-time Markov Chain formulation.
+We note the number of individuals in each facility at each time step.
+The central metric we will examine is the hitting time.
+In these experiments, to e
 
-## Experimental Setup
+## Results
 
-We initialise the state of a simulation by seeding 30 individuals in a single facility.
-We then simulate the system forwards in time until a fixed end time.
+```{python}
 
-Each starting facility is looped over to be the starting facility, and realisations are acquired 20 times for each starting facility.
-This gives pairs of hitting times between the (known) starting facility and target facility (which we get for all non-starting facilities by the end of the simulation realisation)
+```
 
-
-
-
+Plotting the aggregated hitting times as an empirical cumulative distribution function (ECDF) in @fig-ecdf, we can see that
 
 <hr />
 

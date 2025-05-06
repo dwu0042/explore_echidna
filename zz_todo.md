@@ -275,3 +275,13 @@ For release, we should write tests for the ocre library code, and we need to wri
 [3/04]
 
 Add refs in todobib
+
+
+[10/04]
+
+Look at (rhs) outliers of the deviation [burstiness] and see if they are classical bursty
+esp > 1.0
+and larrgeish and smallish
+
+- [01/05] so it looks like it's just one node with a limited time span of existence, causing a large rate (since denom [est size] is small). (8386) 
+  - this prob means we need to revisit the size estimation, and divide by the existence span, instead of the entire time period

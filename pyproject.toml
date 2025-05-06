@@ -8,6 +8,15 @@ authors = [{name = "David Wu", email = "david.wu1@monash.edu"}]
 license = {file = "LICENSE"}
 classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version", "description"]
+dependencies = [
+    "numpy",
+    "polars >= 1.20",
+    "h5py",
+    "igraph",
+    "scipy",
+    "numba",
+    "matplotlib",
+]
 
 [project.urls]
 Home = "https://github.com/dwu0042/echidna_network"

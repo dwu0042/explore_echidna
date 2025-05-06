@@ -520,3 +520,23 @@ plt.hist(deviations.select('deviation').to_series().to_numpy(), bins=101);
 plt.xlabel("Departure Rate Deviation (Snapshot Edge Weight - Static Edge Weight)")
 plt.yscale('log')
 ```
+
+Examining the deviations greater than 1.0, we see they are all edges that are self-loops of a particular location. This occurs due to the rate of indirect departures being greater than 1, which is a byproduct of our location size estiamtion procedure. 
+```{python}
+from echidna import graph_importer as gim
+
+# investigating the weirdness in the RHS
+investigation_location = 8386
+
+tempo = gim.make_graph(str(root / "data/concordant_networks/temponet_14_365.lgl"))
+investi_locs = tempo.vs.select(loc_eq=investigation_location)
+self_loops = tempo.es.select(_from_in=investi_locs, _to_in=investi_locs)
+sloop_source_times = [edge.source_vertex['time'] for edge in self_loops]
+sloop_target_times = [edge.target_vertex['time'] for edge in self_loops]
+self_loop_df = pl.DataFrame({
+  'source_time': sloop_source_times, 
+  'target_time': sloop_target_times,
+  'weight': self_loops['weight'],
+})
+
+```
