@@ -16,6 +16,7 @@ dependencies = [
     "scipy",
     "numba",
     "matplotlib",
+    "more-itertools",
 ]
 
 [project.urls]

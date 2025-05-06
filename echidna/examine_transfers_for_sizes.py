@@ -1,6 +1,7 @@
 import igraph as ig
 from collections import defaultdict
 import numpy as np
+from more_itertools import minmax
 
 
 def determine_self_loops(G: ig.Graph):
@@ -20,6 +21,13 @@ def determine_out_edges(G: ig.Graph):
     return loc_weights
 
 
+def determine_existence_duration(G: ig.Graph):
+    loc_span = {
+        loc: minmax(G.vs.select(loc_eq=loc)["time"]) for loc in set(G.vs["loc"])
+    }
+    return {loc: span[1] - span[0] for loc, span in loc_span.items()}
+
+
 def determine_self_prop(G: ig.Graph):
     self_loops = determine_self_loops(G)
     out_edges = determine_out_edges(G)
@@ -32,10 +40,25 @@ def rough_hospital_size(G: ig.Graph, round_precision=16, clip_under=5):
     TIME_SCALE = 3652  # days
     return {
         loc: np.round(
-            np.clip(sz / PROP_READMIT / TIME_SCALE / CHURN_RATE, clip_under, None),
+            np.clip(moves / PROP_READMIT / TIME_SCALE / CHURN_RATE, clip_under, None),
             round_precision,
         )
-        for loc, sz in determine_out_edges(G).items()
+        for loc, moves in determine_out_edges(G).items()
+    }
+
+
+def nuanced_hospital_size(G: ig.Graph, round_precision=16, clip_under=5):
+    PROP_READMIT = 0.42
+    CHURN_RATE = 1
+    existence = determine_existence_duration(G)
+    return {
+        loc: np.round(
+            np.clip(
+                moves / PROP_READMIT / existence[loc] / CHURN_RATE, clip_under, None
+            ),
+            round_precision,
+        )
+        for loc, moves in determine_out_edges(G).items()
     }
 
 
