@@ -283,6 +283,11 @@ class SnapshotWithHomeConverter(Converter):
     def from_directory(cls, directory: str | Path, *args, **kwargs):
         snapshots = cls.load_snapshots(directory)
         return cls(snapshots, *args, **kwargs)
+    
+    @classmethod
+    def from_file(cls, file: str | Path, *args, **kwargs):
+        # thin wrapper for from_directory
+        return cls.from_directory(file, *args, **kwargs)
 
     @staticmethod
     def load_snapshots(rootpath: str | Path) -> Mapping[int, ig.Graph]:
