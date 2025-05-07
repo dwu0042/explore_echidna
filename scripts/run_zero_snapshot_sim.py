@@ -1,7 +1,7 @@
 """new_newtork_sim"""
 import numpy as np
-import network_conversion as netcon
-import network_simulation as netsim
+from echidna import network_conversion as netcon
+from echidna import network_simulation as netsim
 
 def create_snaphome_parameter_converter(ordering_file, snapshots_directory):
 
@@ -70,14 +70,17 @@ def simulate_sim_and_record(simulation: netsim.SnapshotWithHome, simid, until=10
 
 if __name__ == "__main__":
     import datetime
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent.resolve()
 
     conv = create_snaphome_parameter_converter(
-        ordering_file="./concordant_networks/size_14.csv",
-        snapshots_directory="./conc_tempo_14_detailed/",
+        ordering_file= root / "data/concordant_networks/size_14_nu.csv",
+        snapshots_directory= root / "data/conc_tempo_14_detailed/",
     )
 
     params = init_zero_params(
-        conv, "./concordant_networks/probability_of_final_stay_by_shuffled_campus.csv"
+        conv, root / "data/concordant_networks/probability_of_final_stay_by_shuffled_campus.csv"
     )
 
     sim = create_sim(
@@ -98,5 +101,5 @@ if __name__ == "__main__":
             simdate = now.strftime('%y%m%d')
             simtime = now.strftime('%H%M%S')
             simid = int(simdate + simtime)
-            outname = f"zero_sims/snapshot/sims_30s_pc_fa_r2.h5"
+            outname = root / "simulations/zero_sims_resized/snapshot/sims_30s_pc_fa_r2.h5"
             simulate_sim_and_record(sim, simid=simid, until=8*365, nostop=True, outfile=outname, with_movers=True, simdate=simdate, simtime=simtime, seed=i)

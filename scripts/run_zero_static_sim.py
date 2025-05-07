@@ -1,13 +1,16 @@
+from pathlib import Path
 import numpy as np
 import datetime
-import network_conversion as conv
-import network_simulation as simu
+from echidna import network_conversion as conv
+from echidna import network_simulation as simu
+
+root = Path(__file__).resolve().parent.parent.resolve() 
 
 def preload():
 
-    ordering = conv.Ordering.from_file("./concordant_networks/size_14.csv")
+    ordering = conv.Ordering.from_file( root / "data/concordant_networks/size_14_nu.csv")
     converter = conv.StaticConverter.from_file(
-        "./concordant_networks/static_base_1_threshold_4.graphml", 
+        root / "data/concordant_networks/static_base_1_threshold_4.graphml", 
         ordering,
         purge_selfloops=True,
     )
@@ -17,7 +20,7 @@ def preload():
 
 def gen_params(converter):
 
-    prob_final = conv.ColumnDict.from_prob_final_file("./concordant_networks/probability_of_final_stay_by_shuffled_campus.csv")
+    prob_final = conv.ColumnDict.from_prob_final_file(root / "data/concordant_networks/probability_of_final_stay_by_shuffled_campus.csv")
     prob_final_arr = prob_final.organise_by(converter.ordering)
     prob_final_zero =  np.zeros_like(prob_final_arr)
 
@@ -81,7 +84,7 @@ def run_sims(n_reps=20):
             simdate = now.strftime('%y%m%d')
             simtime = now.strftime('%H%M%S')
             simid = int(simdate + simtime)
-            outname = f"zero_sims/static/sim_all_30s_fixed_axis.h5"
+            outname = root / "simulations/zero_sims_resized/static/sim_all_30s_fixed_axis.h5"
             simulate_sim_and_record(sim, simid=simid, until=8*365, nostop=True, outfile=outname, with_movers=True, simdate=simdate, simtime=simtime, seed=i)
 
 if __name__ == "__main__":
