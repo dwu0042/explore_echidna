@@ -8,7 +8,7 @@ import h5py
 
 
 class Simulation:
-    def __init__(self, full_size: Iterable[SupportsFloat], parameters: Mapping, dt=1.0):
+    def __init__(self, full_size: Iterable[SupportsFloat], parameters: Mapping, dt=1.0, **kwargs):
         self.N = np.asanyarray(full_size).reshape((-1, 1))
         self.NHOSP, _ = self.N.shape
         self.state = np.zeros_like(self.N)
@@ -21,6 +21,9 @@ class Simulation:
         ]  # softref here should update as initial self.state updates in seed
 
         self.rng = np.random.default_rng(None)
+
+        # remove additional init kwargs
+        _ = kwargs
 
     @property
     def history(self):
@@ -151,12 +154,14 @@ class SnapshotWithHome(SimulationWithMovers):
         timings: Sequence,
         track_movement=False,
         dt=1.0,
+        **kwargs,
     ):
         super().__init__(
             full_size=full_size,
             parameters=parameters,
             track_movement=track_movement,
             dt=dt,
+            **kwargs,
         )
 
         self.current_index = 0
@@ -229,12 +234,14 @@ class StaticWithHome(SimulationWithMovers):
         parameters: Mapping,
         dt=1.0,
         track_movement=False,
+        **kwargs,
     ):
         super().__init__(
             full_size=full_size,
             parameters=parameters,
             dt=dt,
             track_movement=track_movement,
+            **kwargs,
         )
 
         self.shadow_state = np.zeros((self.NHOSP, self.NHOSP), dtype=np.int64)
@@ -299,12 +306,14 @@ class TemporalSim(SimulationWithMovers):
             discretisation_size: float,
             track_movement=False,
             dt=1.0,
+            **kwargs,
     ):
         super().__init__(
             full_size=full_size,
             parameters=parameters,
             track_movement=track_movement,
             dt=dt,
+            **kwargs,
         )
 
         self.NT = num_times
@@ -390,11 +399,12 @@ class TemporalSim(SimulationWithMovers):
         self.time_travellers = np.zeros_like(self.time_travellers, dtype=np.int64)
 
 class SnapshotNaive(Simulation):
-    def __init__(self, full_size: Iterable[SupportsFloat], parameters: Mapping, timings: Sequence, dt=1.0):
+    def __init__(self, full_size: Iterable[SupportsFloat], parameters: Mapping, timings: Sequence, dt=1.0, **kwargs):
         super().__init__(
             full_size=full_size,
             parameters=parameters,
             dt=dt,
+            **kwargs,
         )
 
         self.current_index = 0
