@@ -1,6 +1,6 @@
 """this is a base refactor of on_network_simulation"""
 
-from typing import Sequence, Mapping
+from typing import Iterable, Sequence, Mapping, SupportsFloat
 import numpy as np
 from .util import BlackHole
 from .numba_sample import multinomial_sparse_full, truncated_poisson, multinomial_sample_sparse_collapsed
@@ -8,7 +8,7 @@ import h5py
 
 
 class Simulation:
-    def __init__(self, full_size: Sequence[int], parameters: Mapping, dt=1.0):
+    def __init__(self, full_size: Iterable[SupportsFloat], parameters: Mapping, dt=1.0):
         self.N = np.asanyarray(full_size).reshape((-1, 1))
         self.NHOSP, _ = self.N.shape
         self.state = np.zeros_like(self.N)
@@ -146,7 +146,7 @@ class SimulationWithMovers(Simulation):
 class SnapshotWithHome(SimulationWithMovers):
     def __init__(
         self,
-        full_size: Sequence[int],
+        full_size: Iterable[SupportsFloat], 
         parameters: Mapping,
         timings: Sequence,
         track_movement=False,
@@ -225,7 +225,7 @@ class SnapshotWithHome(SimulationWithMovers):
 class StaticWithHome(SimulationWithMovers):
     def __init__(
         self,
-        full_size: Sequence[int],
+        full_size: Iterable[SupportsFloat], 
         parameters: Mapping,
         dt=1.0,
         track_movement=False,
@@ -293,7 +293,7 @@ class TemporalSim(SimulationWithMovers):
     
     def __init__(
             self, 
-            full_size: Sequence[int],
+            full_size: Iterable[SupportsFloat],
             parameters: Mapping, 
             num_times: int,
             discretisation_size: float,
@@ -390,7 +390,7 @@ class TemporalSim(SimulationWithMovers):
         self.time_travellers = np.zeros_like(self.time_travellers, dtype=np.int64)
 
 class SnapshotNaive(Simulation):
-    def __init__(self, full_size: Sequence[int], parameters: Mapping, timings: Sequence, dt=1.0):
+    def __init__(self, full_size: Iterable[SupportsFloat], parameters: Mapping, timings: Sequence, dt=1.0):
         super().__init__(
             full_size=full_size,
             parameters=parameters,
