@@ -11,3 +11,5 @@ env.ini
 *.html
 *.pkl
 *.png
+
+*.out
