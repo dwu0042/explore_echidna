@@ -183,13 +183,13 @@ class Summariser():
 
 class Metrics(pl.DataFrame):
 
-    def add_extent(self, extent_time=30):
+    def add_extent(self, extent_time=30, extent_name="extent"):
         return self.with_columns(
             pl.concat_list(pl.selectors.starts_with('hitting_time'))
             .list.eval(pl.element().lt(extent_time))
             .list.sum().sub(1)
-            .alias('extent'),
-            pl.lit(extent_time).alias('extent_time')
+            .alias(extent_name),
+            pl.lit(extent_time).alias(f'{extent_name}_time')
         )
 
 
