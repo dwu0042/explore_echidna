@@ -1,21 +1,27 @@
+from os import PathLike
 from typing import Mapping
+from pathlib import Path
 import numpy as np
 import igraph as ig
+import polars as pl
 from matplotlib import pyplot as plt, colors
 from scipy import sparse
 
-import network_conversion as ntc
-import hitting_markov as hit
-from realisation_summary_stats import hitting_time
+from echidna import network_conversion as ntc
+from echidna import hitting_markov as hit
+from echidna import examine_transfers_for_sizes as esz
+
+root = Path(__file__).resolve().parent.parent.resolve()
 
 def graph_read(filename: str):
     return ig.Graph.Read(filename)
 
 ## NAIVE STATIC MODEL
 def get_naive_static_Q(
-    graph: str | ig.Graph = "./concordant_networks/shuf_static_network.graphml",
-    size_file="./concordant_networks/size_14.csv",
-    time_span = (10*365),
+    graph: str | PathLike | ig.Graph = root / "data/concordant_networks/shuf_static_network.graphml",
+    size_file: str | PathLike = root / "data/concordant_networks/size_14_nu.csv",
+    duration_file: str | PathLike = root / "data/concordant_networks/durations_1.csv",
+    default_time_span = (10*365),
     ordering_key = 'name',
     value_key = 'id',
 ):
@@ -33,14 +39,19 @@ def get_naive_static_Q(
     size_order = ntc.Ordering.from_file(size_file)
     sizes = np.array([size_order(i) for i in graph_ordering.order])
 
+    durations = esz.quick_read(duration_file)
+    duration_values = np.array([durations.get(i, default_time_span) 
+                                for i in graph_ordering.order])
+
+    denominator = sizes * duration_values
+
     # we use the naive construction, since the null set (never return) version creates 
     # results that misrepresent the amount of time it takes to move through the system
     # We also use the internal function in order to directly pass the transition matrix 
     # constructed, as opposed to the non-scaled weighted adjacency matrix
     T = ntc.transition_matrix_from_graph(G, 
                                         ordering=graph_ordering,
-                                        scaling_per_node=sizes,
-                                        global_scaling=time_span,
+                                        scaling_per_node=denominator,
                                         ordering_key=ordering_key, 
                                         adjacency_attribute='weight',
                                         )

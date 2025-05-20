@@ -47,6 +47,7 @@ def solve_survival_ode(Q, index=-1, locations=None, endpoint=200):
 
 
 def compute_multichain_hitting_time(Nchains, Q, index=-1, precision=30, scaling=1.0):
+    print(index, end='\t', flush=True)
     roots, weights = determine_laguerre_roots_and_weights(precision)
     gl_weights = weights * np.exp(roots)
 

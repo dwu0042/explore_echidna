@@ -1,0 +1,487 @@
+---
+title: "Temporality of the Victorian Hospital Patient Transfer Network"
+format:
+  plos-pdf:
+    number-sections: false
+    journal:
+      id: ploscompbio
+    include-in-header:
+      text: |
+        \usepackage{setspace}
+        \doublespacing
+    keep-tex: true
+author:
+  - name: Michael J Lydeamore
+    affiliations:
+      - ref: ebs
+      - ref: vicdh
+    email: michael.lydeamore@monash.edu
+    corresponding: true
+  - name: David Wu
+    affiliations:
+      - ref: ebs
+  - name: Tjibbe Donker
+    affiliations:
+      - ref: freiburg
+  - name: Ben Cooper
+    affiliations:
+      - ref: oxford
+  - name: Marion Easton
+    affiliations:
+      - ref: vicdh
+  - name: Nicholas Geard
+    affiliations:
+      - ref: uom
+  - name: Claire Gorrie
+    affiliations:
+      - ref: doherty
+      - ref: mdu
+  - name: Daneeta Hennessy
+    affiliations:
+      - ref: vicdh
+  - name: Benjamin Howden
+    affiliations:
+      - ref: mdu
+  - name: Anton Y Peleg
+    affiliations:
+      - ref: id
+  - name: Charlie Higgs
+    affiliations:
+      - ref: mdu
+  - name: Andrew Wilson
+    affiliations:
+      - ref: vicdh
+  - name: Andrew J Stewardson
+    affiliations:
+      - ref: id
+    
+affiliations:
+  - id: ebs
+    name: Department of Econometrics and Business Statistics, Monash University
+    city: Melbourne
+    state: Victoria
+    country: Australia
+  - id: vicdh
+    name: Victorian Department of Health, Government of Victoria
+    city: Melbourne
+    state: Victoria
+    country: Australia
+  - id: freiburg
+    name: Institute for Infection Prevention and Hospital Epidemiology, University Medical Center
+    state: Freiburg
+    country: Germany
+  - id: uom
+    name: School of Computing and Information systems, University of Melbourne
+    city: Melbourne
+    state: Victoria
+    country: Australia
+  - id: mdu
+    name: Microbiological Diagnostic Unit Public Health Laboratory, Department of Microbiology & Immunology, University of Melbourne, at the Peter Doherty Institute for Infection and Immunity
+    city: Melbourne
+    state: Victoria
+    country: Australia
+  - id: doherty
+    name: Department of Microbiology & Immunology, University of Melbourne, at the Peter Doherty Institute for Infection and Immunity
+    city: Melbourne
+    state: Victoria
+    country: Australia
+  - id: id
+    name: Department of Infectious Diseases, The Alfred and Central Clinical School, Monash University
+    city: Melbourne
+    state: Victoria
+    country: Australia
+  - id: oxford
+    name: Centre for Tropical Medicine and Global Health, Nuffield Department of Medicine, University of Oxford
+    state: Oxford
+    country: United Kingdom
+
+
+bibliography: refs.bib
+crossref:
+  fig-prefix: Fig
+execute:
+  warning: false
+  error: false
+---
+
+```{python}
+#| label: compute-imports
+import numpy as np
+from pathlib import Path
+import polars as pl
+from matplotlib import pyplot as plt, dates as mdates
+import seaborn as sns
+import calendar
+from itertools import accumulate
+import datetime
+
+root = Path("../").resolve()
+
+sns.set_theme(
+  context='paper',
+  style='white',
+  palette='colorblind',
+  font='cmr10',
+)
+```
+
+# Introduction
+
+Antimicrobial resistance poses a great threat to human health and development. [@murray_global_2022]
+Globally, it poses a large burden, operationally and economically, on hospital systems.
+In Australia, we see [significant] economic burden from AMR.
+this impact could become more significant if we had incursion and subsequent establishment of new [strains] of AMR. 
+One X of interest is carbapenemase-producing enterobacteriacea (CPE). 
+Australia has an endemic strain of CPE -- IMP4 -- but this is at a relatively low level. 
+This already causes some level of burden, and introduced strains would further multiply this.
+
+
+## Setting 
+
+Victoria, Australia, has a population of 7.0 million people [@ABS_state_populations]. Its hospital system consists of $N_x = 338$ hospital campuses, which vary in size, case mix and services. 
+
+Hospital admissions data was sourced from the Victorian Admitted Episdoes Dataset (VAED) [@VAED_official].
+In particular, admissions data from 1 January 2011 to 9 December 2020 (3631 days) was used in this study. All Victorian hospital admissions during this study period are included. The total number of admission records is 26876787.
+This data was aggregated into time-discretised temporal networks (described below), and exported from the database; further analysis as presented in this paper is performed on external machines with no access to identifiable protected health information.
+
+Some exploratory analysis of this data was done in by [@lydeamore_carbapenemase-producing_2024].
+
+# Methods
+
+## Existing modelling {#sec-network-modelling}
+
+There has been some existing work that analyse hospital systems using the framework of network analysis. 
+They define a network consisting of hospitals as nodes, connected by edges that have weights representative of the amount of patient movement between those hospitals.
+Using these networks, hospitals and links that are important to mrough hospital systems has been studied in the past as a network phenomenon [@donker_patient_2010]. 
+The movement of patients through the hospital systems induced by referrals can be represented as edges between hospital nodes. 
+However, these networks are usually presented as static, where movement over a large period of time has been aggregated to form a single network. 
+It is known, especially in other applications, that temporal networks can display different behaviour than the static equivalents. 
+In this paper, we investigate these differences using the Victorian hospital system as a baseline for comparison. 
+In particular, we investigate the impacts of the inclusion of modelling the period of time that patients spend at home between admissions, and the effect of approximating the granulovement around the hospital system by analysing measures of centrality and clustering.
+A weighted, directed network can be used to construct a Markov chain that in turn can be analysed or simulated to understand the dynamics of a spreading infectious disease.
+For each edge $e_{ij}$ with a number of observed movements $w_{ij}$ over some time period $\tau$, 
+we can construct a reaction that has a hazard function $\lambda_{ij} = w_{ij} / \tau$. This implicitly constructs a process that has inter-event times (i.e. times between distinct patient movements) that are exponentially distributed $\text{Exp}(\lambda_{ij})$.
+
+Temporal networks are also not new phenomena in modelling infectious diseases processes. For example, 
+[ref] [does thing]. However, edges of temporal networks typically represent 
+
+## Network models of patient transfers for temporal fidelity
+
+
+:::{.hidden}
+$$
+\newcommand{\dd}[2][t]{\frac{\mathrm{d}#2}{\mathrm{d}#1}}
+\newcommand{\ceil}[1]{\lceil#1\rceil}
+$$
+:::
+
+![Sketch of the generalised model with processes of (1) permanent discharge ($u \to \emptyset$), (2) direct transfer ($u \to v$), (3) return home ($u \to h_{uv}$), (4) readmission $h_{uv} \to v$).](diagrams/movement_general_case.pdf){#fig-general-diagram}
+
+Here, $u$ and $v$ are locations (potentially identical locations), $s$ and $t$ are times. We take that $t \geq s$.
+$\emptyset$ represents patients that are not observed to return to the hospital system after their discharge from location $u$. We assume the associated hazard for this process ($\zeta_u(t)$) to be known for all locations $u$ at all times $t$: the modelling of this process is the same for all network models, and will be neglected in the following.
+
+Further, we define the function $w_{uv}(s, t)$ to be the number of individuals that are observed to discharge from $u$ at time $s$ and readmit at time $t$. We allow a maximum of one of the pairs $u,v$ and $s,t$ to be reflexive, i.e. $u=v$ or $s=t$, but not both.
+
+We will also assume that we will have quantities $N_u$ that represent the "size" of a location $u$. We assume that all locations $u$ will have $N_u$ individuals in them at all times, and that the observed mvoements $w_{uv}(s, t)$ can be thought of as being scaled by $N_u$.
+
+The governing equations can be roughly expressed as a function of the hazards of each process.
+
+$$
+\begin{aligned}
+\lambda(u(s) \to \emptyset) &= \zeta_u(s)\\
+\lambda(u(s) \to v(t)) &= d_{uv}(s, t)\\
+\lambda(u(s) \to z_{uv}(s, t)) &= \eta_{uv}(s, t)\\
+\lambda(z_{uv}(s, t) \to v(t)) &= \rho_{uv}(s, t)
+\end{aligned}
+$$
+
+We note that as a consequence of the model structure, the hazards can also be interpreted as modelling the hodling time an individual patient spends in each state. 
+
+### Naïve Static Model
+
+We can begin with a simple naive static model. This model will have the edge weights between healthcare facilities that represent the number of transfers from the source node to the target node over a certain period of observation time ($T_\Sigma$), regardless of how long the patient is absent from the healthcare facilities between initial discharge and subsequent readmission.
+
+With reference to the general model above, the hazards of the  naïve static model are:
+
+$$ d_{uv}(s,t) = d_{uv} = \frac{\sum_{s,t} w_{uv}(s,t)}{T_\Sigma N_u} $$
+$$ \eta_{uv}(s,t) = \eta_{uv} = 0 $$
+$$ \rho_{uv}(s,t) = \rho_{uv} = 0 $$
+
+That is, all movements are instantaneous, and the rate of movement is the mean rate of movement over the entire observation period. This is an oversimplification of the work done in @donker, but represents a "worst" case model of temporal fidelity that can be benchmarked against.
+
+### Improved Static Model
+
+We can introduce the concept of "indirectness" by allowing individuals to return home, in an "improved" static model.
+In this model, we choose some threshold value $\omega$ that delineates direct transfers that occur "instantaneously" and indirect transfers that require a patient to first move to an intermediary "home" state before readmitting.
+
+In comparison to the naive model, we will have non-zero hazards $\eta$ and $\rho$:
+
+$$d_{uv}(s,t) = d_{uv} =  \frac{\sum_{s,t: (t-s) < \omega} w_{uv}(s,t)}{T_\Sigma N_u}$$
+$$\eta_{uv}(s,t) = \eta_{uv} = \frac{\sum_{s,t: (t-s) \geq \omega} w_{uv}(s,t)}{T_\Sigma N_u}$$
+$$\rho_{uv}(s,t) = \rho_{uv} = \left[ \frac{\sum_{s,t: (t-s) \geq \omega} (t-s) w_{uv}(s,t)}{\sum_{s,t: (t-s) \geq \omega} w_{uv}(s,t)}  \right]^{-1}$$
+
+Here, we model the rate of indirect transfers $\eta$ similarly to the rate of direct transfers  $d$, by counting the average rate of observed movements. For the rate of readmission, $\rho$, we use the inverse of the mean readmission duration/delay.
+
+### Snapshot Model
+
+Of course, as the hospital system changes over time, the rate of patient transfers, and thus the hazards represented in our model should also change.
+We see evidence of this in @fig-movement-over-time where we plot the overall rates of movement in the network over time.
+
+```{python}
+#| label: compute-movement-over-time
+base_date = datetime.date(2011, 1, 1)
+aggregated_movement = pl.read_csv(root / "data/concordant_networks/analyses/movement_aggregated.csv")
+aggregated_movement = (
+  aggregated_movement
+  .group_by('t')
+  .agg(pl.col('w').sum())
+  .sort('t')
+  .with_columns(
+    date=pl.lit(base_date) + pl.duration(days=pl.col('t')),
+    my=pl.col('w').rolling_mean(window_size=365, center=True),
+    mw=pl.col('w').rolling_mean(window_size=7, center=True),
+    mm=pl.col('w').rolling_mean(window_size=28, center=True),
+  )
+)
+```
+
+```{python}
+#| label: fig-movement-over-time
+#| fig-cap: Number of patient transfers throughout the network increases over time. Right-hand end of data exhibits censoring behaviour, since we do not see long-terms readmissions beyond the end of the data observation period. We also observe seasonal behaviour (most visually obvious with periods of a year and a week), and consistent decreases of transfers during public holiday periods, especially at the end of the year.
+fig = plt.figure()
+ax = fig.add_subplot()
+sns.despine(ax=ax)
+
+nth_year = 4
+x1, x2 = datetime.date(2011+nth_year-1, 12, 15), datetime.date(2011+nth_year+1, 1, 15)
+y1, y2 = 12_000, 25_000
+inset = ax.inset_axes(
+  [0.15, 0.1, 0.7, 0.35], 
+  xlim=(x1, x2), 
+  ylim=(y1, y2),
+  xlabel='',
+  ylabel='',
+  yticks=[],
+  yticklabels=[],
+)
+for axes in (ax, inset):
+  sns.lineplot(aggregated_movement, x='date', y='w', color='C0', ax=axes)
+
+sns.lineplot(aggregated_movement, x='date', y='my', color='red', ax=ax)
+sns.lineplot(aggregated_movement, x='date', y='mw', color='red', ax=inset)
+
+ax.indicate_inset_zoom(inset, edgecolor='black')
+
+inset.set_xlabel('')
+inset.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+_ = ax.set_xlabel('Date')
+_ = ax.set_ylabel('Number of patient transfers')
+```
+
+We approach this using static network snapshots of the hospital system over time. 
+
+For the snapshot model, we choose a snapshot duration $\omega$. This defines the threshold duration of an indirect transfer.
+This introduces an new intermediary state variable $z'$ that contains the individuals that would enter $z$ within the duration of a given snapshot $[t, t+\omega]$, so that they do not immediately readmit to their next hospital.
+This alters the indirect transfer processes to
+
+$$
+\begin{aligned}
+\lambda(u(s) \to {z'}_{uv}(s)) &= \sum_t \eta_{uv}(s, t)\\
+\lambda({z'}_{uv}(t) \to z_{uv}(t)) &= \delta(t \mod\omega)\\
+\end{aligned}
+$$
+
+where $\delta(\cdot)$ is the Dirac delta function.
+Alongside this, we also compute from the data, the number of patients "at home" at a given time, in order to inform the denominator for the process from $z'$ to $z$. We denote this quantity $H_{uv}(t)$
+We will have that:
+
+$$d_{uv}(s,t) = d_{uv}(s) = \frac{\sum_{t: (t-s) < \omega} w_{uv}(s,t)}{\omega N_u}$$
+$$\eta_{uv}(s,t) = \eta_{uv}(s) = \frac{\sum_{t: (t-s) \geq \omega} {w_{uv}(s, t)}}{\omega N_u}$$
+$$\rho_{uv}(s,t) = \rho_{uv}(t) = \frac{\sum_{s: (t-s) \geq \omega} {w_{uv}(s, t)}}{\omega H_{uv}}$$
+
+### Temporal Model
+
+For the temporal network, we make a choice of the time discretisation $\omega$. That is, events that occur within a time window $[\tau, \tau+\omega)$ are collapsed and aggregated to occur at time $\tau$. Over the observation (and simulation) period, we will have a series of time window boundaries $\{\tau_0, \tau_1, \dots\}$. We denote the smallest value in that set larger than a given time $t$ to be $\lceil{}t\rceil{}_\omega$
+For the readmission process, we assume that individuals that would readmit within a given time window $[\tau, \tau+\omega)$ do so uniformly. 
+This yields:
+
+$$d_{uv}(s, t) = \frac{\sum_{t: (t-s) < \omega} w_{uv}(s, t)}{\omega N_u}$$
+$$\eta_{uv}(s, t) = \frac{\sum_{t: (t-s) \geq \omega} w_{uv}(s, t)}{\omega N_u}$$
+$$\rho_{uv}(s,t) = \frac{1}{\lceil{}t\rceil{}_\omega - t}$$
+
+
+# Results
+
+## Simulation Study
+
+Since analytical results are intractable for the more complex network models, we resort to simulation as a statistical proxy.
+Movements of marked individuals are tracked for each network type, when they are seeded at each facility in the network at $t=0$. The hitting time $k_j$ to each other hospital is recorded.
+We mark $N_0 = 30$ individuals at the start of each realisation; we generate $N_r=20$ realisations for each seed facility.
+
+We plot the (empirical) cumulative distribution function of the hitting times for all pairs of seed facility and target facility in @fig-ecdf
+
+```{python}
+#| label: compute-aggregating-sim-metrics
+metrics_files = {
+  folder.stem: folder / "metrics_30s.parquet"
+    for folder in (root / "simulations/zero_sims_resized").iterdir()
+}
+
+metrics = {
+    label: pl.read_parquet(file)
+    for label , file in metrics_files.items()
+}
+
+_hitting_time_columns = pl.selectors.starts_with("hitting_time_")
+agg_metrics = dict()
+hitting_time_dists = dict()
+extent_dists = dict()
+
+for model, df in metrics.items():
+    agg_metric = (df
+                .unpivot(
+                    on=_hitting_time_columns,
+                    index=['seed', 'extent'],
+                    variable_name='target',
+                    value_name='hitting_time',
+                )
+                .with_columns(
+                    target_seed = (
+                        pl.col('target')
+                        .str.strip_prefix('hitting_time_')
+                        .str.to_integer()
+                    )
+                )
+                .drop('target')
+                ) 
+    agg_metrics[model] = agg_metric
+    hitting_time_dists[model] = np.sort(agg_metric.select("hitting_time").to_series().to_numpy())
+    extent_dists[model] = np.sort(agg_metric.select('extent').to_series().to_numpy())
+```
+```{python}
+#| label: fig-ecdf
+#| fig-cap: Empirical cumulative distributions of the hitting times between any pair of facilities in the network, for different network models. $N_0 =30$ individuals are seeded initially, all at one facility, and then allowed to propagate through the network.
+
+fig = plt.figure()
+ax = fig.add_subplot()
+for model, dist in hitting_time_dists.items():
+    ax.plot(dist, np.linspace(0, 1, len(dist), endpoint=False), label=model)
+
+ax.set_xlabel('hitting time')
+ax.set_ylabel('ECDF')
+
+ax.legend(loc='lower right')
+sns.despine(ax=ax)
+```
+
+
+```{python}
+#| label: fig-extent
+#| fig-cap: Number of facilities that have had a marked individual admitted after $t=30$ days. The naïve static model overestimates the range of the spread.
+
+max_extent = max(max(dist) for dist in extent_dists.values())
+extent_bins = np.arange(max_extent+2)
+
+# fig = plt.figure()
+# ax = fig.add_subplot()
+fig, axz = plt.subplots(nrows=4, sharey=True, sharex=True)
+axs = axz.flatten()
+
+model_order = sorted(extent_dists.keys())
+for ax, model in zip(axs, model_order):
+  ax.hist(
+    extent_dists[model],
+    bins=extent_bins,
+    density=True,
+  )
+  ax.set_ylabel(model)
+
+axs[-1].set_xlabel('Extent')
+```
+
+
+# Discussion
+
+We have investigated the effects of modelling the network representations of patient transfers between healthcare facilities in Victoria with differing levels of temporal fidelity. We see that there are qualitative behavioural differences between the movement patterns induced by these different network representations.
+One unique temporal property of the networks here is that edges can connect nodes not just in space, but also in time. This leads to a reservoir of individuals of interest that exist outside of the healthcare system that will return at a later time, which leads to rich temporal dynamics. These behaviours are poorly captured by a naïve static network; including this mechanism on top of a static network representation can help significantly in moving the qualitative behaviour fo the 
+
+
+# Supplementary
+
+## Verification of simulation results
+
+For any continuous-time Markov chain, we can derive the Q-matrix, which represents how ...
+Importantly, we can use the forward equation to generate a viable representation of the evolution of the probability density function as a system of ODEs that scales with the number of states.
+
+Typically, the structure of these models represents the state of the _system_; here we use the model as a representation of teh state of an _individual_. Thus, we can envision a simulation with $N_0$ initial seed individuals as being equivalent to $N_0$ independent, but identically distributed, Markov chains.
+Here, then, a state maps onto a facility; for more complex models, a state may map onto either a facility, or a "home" state that could be uniquely identified by a pair of facilities.
+
+This make computing the probability density function very computationally expensive when the number of Markov states becomes large. This is due to the fact that the ODE system will tend towards very dense matrices $P$ if the network is connected, even if $Q$ itself is sparse. This makes some representations, in particular the temporal network, completely intractable, since we would have to allocate a ${(N_f)}^2 \times {(N_T)}^2$ floating point matrix for each time step. For $N_f \sim O(10^2), N_T \sim O(10^3)$, this yields a roughly $O(10^{(10\sim 11)}$ byte (10\~100 GB) float32 matrix every time step (in memory).
+
+Thus, we only solve this problem for the naïve static network case.
+Below, we plot the analytical solution against the empirical mean hitting time of pairs that have all realisations hitting.
+
+::: {#fig-naive-static-verification}
+
+```{python}
+#| label: compute-naive-static-verify
+model = 'naive_static'
+dist = hitting_time_dists['naive_static']
+n_null_accept = 1 
+agg_stats = (
+  agg_metrics[model]
+  .group_by('seed', 'target_seed')
+  .agg(
+    pl.col('hitting_time').mean().alias('hitting_time_mean'),
+    # pl.col('extent').mean().alias('extent_mean'),
+    pl.col('hitting_time').median().alias('hitting_time_median'),
+    # pl.col('extent').median().alias('extent_median'),
+    pl.col('hitting_time').null_count().alias('hitting_time_nulls'),
+    # pl.col('extent').null_count().alias('extent_nulls'),
+  )
+  .with_columns(
+    pl.when(pl.col('hitting_time_nulls') > n_null_accept).then(pl.lit(None)).otherwise(pl.col('hitting_time_mean')).alias('hitting_time_mean_nld'),
+    pl.when(pl.col('hitting_time_nulls') > n_null_accept).then(pl.lit(None)).otherwise(pl.col('hitting_time_median')).alias('hitting_time_median_nld'),
+  )
+)
+
+hit_mean = agg_stats.select('hitting_time_mean_nld').to_series().sort(nulls_last=True).to_numpy()
+hit_median = agg_stats.select('hitting_time_median_nld').to_series().sort(nulls_last=True).to_numpy()
+
+# import analytical
+analytical_naive_static_soln = pl.read_csv(root / "outputs/hitting_time_analysis/numer_hitting_30s_nu_size.csv")
+analytical_dist = analytical_naive_static_soln.select('hitting_time').to_series().sort(nulls_last=True).to_numpy()
+
+N_pairs = agg_stats.shape[0]
+dist_len = len(dist)
+N_anal = len(analytical_dist)
+
+fig, ax = plt.subplots()
+# ax.plot(
+  # dist, np.linspace(0, 1, dist_len, endpoint=False), 
+  # label='empirical distribution'
+# )
+ax.plot(
+  hit_mean, np.linspace(0, 1, N_pairs, endpoint=False),
+  label='empirical mean'
+)
+# ax.plot(hit_median, np.linspace(0, 1, N_pairs, endpoint=False), label='median')
+xlim = ax.get_xlim()
+ylim = ax.get_ylim()
+ax.plot(
+  analytical_dist, np.linspace(0, 1, N_anal, endpoint=False),
+  linestyle='dashed',
+  label='analytical mean'
+)
+ax.set_xlim(xlim[0], max(dist) * 1.15)
+# ax.set_ylim(ylim)
+ax.legend()
+
+ax.set_xlabel('time')
+ax.set_ylabel('ECDF')
+sns.despine(ax=ax)
+```
+
+
+Verification of the empirical simulation results against analytical results. We see that at early time the mean empirical and analytical expected hitting times agree, with a large right-hand censoring effect. When computing the empirical means, we allow `{python} n_null_accept` nulls across all realisations.
+:::

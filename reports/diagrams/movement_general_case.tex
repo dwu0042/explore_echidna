@@ -1,0 +1,40 @@
+\documentclass[tikz, margin=2mm]{standalone}
+
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric, shapes.arrows}
+
+\begin{document}
+
+\begin{tikzpicture}[
+  node distance=2cm and 4cm,
+  >=latex
+]
+  \tikzset{
+    squarx/.style= {
+      regular polygon,
+      regular polygon sides=4
+    }
+  }
+  \tikzset{
+    house/.style= {
+      single arrow,
+      shape border rotate=90,
+      single arrow head extend=0pt,
+      single arrow tip angle=120,
+      minimum height=0.75cm,
+      minimum width=0.75cm
+    }
+  }
+
+  \node[draw, squarx] (A) {$u$};
+  \node (X) [right=of A] {};
+  \node[draw, squarx] (B) [right=of X] {$v$};
+  \node[draw, house] (H) [below=of X] {$h_{uv}$};
+  \node[draw, circle] (D) [above=of X] {$\emptyset$};
+
+  \draw[->] (A) edge node[above]{$d_{uv}(s, t)$}  (B);
+  \draw[->] (A) edge node[above left]{$\zeta_u(s)$} (D);
+  \draw[->] (A) edge node[below left]{$\eta_{uv}(s,t)$} (H);
+  \draw[->] (H) edge node[below right]{$\rho_{uv}(s,t)$} (B);
+\end{tikzpicture}
+
+\end{document}

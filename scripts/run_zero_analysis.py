@@ -125,11 +125,25 @@ def main_plot():
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
 
-    ax.figure.savefig("outputs/zero_hitting_time_dur_upd.png")
+    ax.set_xlim(-5, 250)
+    ax.set_ylim(-1e-3, 0.1)
+
+
+    sns.despine(ax=ax)
+
+    ax.figure.savefig("outputs/zero_hitting_time_dur_upd_zoomed_in.pdf")
     return ax
 
 if __name__ == "__main__":
+    import argparse
 
-    analytical_file = root / "outputs/hitting_time_analysis/numer_hitting_30s_nu_size.csv"
-    compute_analytical_naive_static_hitting(analytical_file)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--force", '-f', action='store_true', 
+                        help='force recomputation of analytical solution')
+    args = parser.parse_args()
+
+    if args.force:
+        analytical_file = root / "outputs/hitting_time_analysis/numer_hitting_30s_nu_size.csv"
+        compute_analytical_naive_static_hitting(analytical_file)
+    
     ax = main_plot()

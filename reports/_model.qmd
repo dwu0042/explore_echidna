@@ -15,46 +15,8 @@ $$
 :::
 
 :::{#fig-general-diagram}
-```{.tikz}
-%%| format: svg
-%%| filename: movement_general_case
-%%| img-width: 800
-%%| fig-cap: general movement processes
-\usetikzlibrary{arrows.meta, positioning, shapes.geometric, shapes.arrows}
 
-\begin{tikzpicture}[
-  node distance=2cm and 4cm,
-  >=latex
-]
-  \tikzset{
-    squarx/.style= {
-      regular polygon,
-      regular polygon sides=4
-    }
-  }
-  \tikzset{
-    house/.style= {
-      single arrow,
-      shape border rotate=90,
-      single arrow head extend=0pt,
-      single arrow tip angle=120,
-      minimum height=0.75cm,
-      minimum width=0.75cm
-    }
-  }
-
-  \node[draw, squarx] (A) {$u$};
-  \node (X) [right=of A] {};
-  \node[draw, squarx] (B) [right=of X] {$v$};
-  \node[draw, house] (H) [below=of X] {$h_{uv}$};
-  \node[draw, circle] (D) [above=of X] {$\emptyset$};
-
-  \draw[->] (A) edge node[above]{$d_{uv}(s, t)$}  (B);
-  \draw[->] (A) edge node[above left]{$\zeta_u(s)$} (D);
-  \draw[->] (A) edge node[below left]{$\eta_{uv}(s,t)$} (H);
-  \draw[->] (H) edge node[below right]{$\rho_{uv}(s,t)$} (B);
-\end{tikzpicture}
-```
+![](diagrams/movement_general_case.pdf)
 
 Sketch of the generalised model with processes of 1. permanent discharge ($u \to \emptyset$), 2. direct transfer ($u \to v$), 3. return home ($u \to h_{uv}$, 4. readmission $h_{uv} \to v$).
 :::
@@ -129,10 +91,10 @@ $$\rho_{uv}(s,t) = \rho_{uv}(t) = \frac{\sum_{s: (t-s) \geq \omega} {w_{uv}(s, t
 
 ### Temporal Model
 
-For the temporal network, we make a choice of the time discretisation $\omega$. That is, events that occur within a time window $[\tau, \tau+\omega)$ are collapsed and aggregated to occur at time $\tau$. Over the observation (and simulation) period, we will have a series of time window boundaries $\{\tau_0, \tau_1, \dots\}$. We denote the smallest value in that set larger than a given time $t$ to be $\ceil{t}_\omega$
+For the temporal network, we make a choice of the time discretisation $\omega$. That is, events that occur within a time window $[\tau, \tau+\omega)$ are collapsed and aggregated to occur at time $\tau$. Over the observation (and simulation) period, we will have a series of time window boundaries $\{\tau_0, \tau_1, \dots\}$. We denote the smallest value in that set larger than a given time $t$ to be $\lceil{}t\rceil{}_\omega$
 For the readmission process, we assume that individuals that would readmit within a given time window $[\tau, \tau+\omega)$ do so uniformly. 
 This yields:
 
 $$d_{uv}(s, t) = \frac{\sum_{t: (t-s) < \omega} w_{uv}(s, t)}{\omega N_u}$$
 $$\eta_{uv}(s, t) = \frac{\sum_{t: (t-s) \geq \omega} w_{uv}(s, t)}{\omega N_u}$$
-$$\rho_{uv}(s,t) = \frac{1}{\ceil{t}_\omega - t}$$
+$$\rho_{uv}(s,t) = \frac{1}{\lceil{}t\rceil{}_\omega - t}$$

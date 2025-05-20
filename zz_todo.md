@@ -285,3 +285,16 @@ and larrgeish and smallish
 
 - [01/05] so it looks like it's just one node with a limited time span of existence, causing a large rate (since denom [est size] is small). (8386) 
   - this prob means we need to revisit the size estimation, and divide by the existence span, instead of the entire time period
+
+[15/05] 
+- looking at our assumption of "churn rate" for size estimation. We have this on CVDL, but mean of mean etc gives 2d, 4d, 6hr. I want to extract this as
+  - FID | Admissions Count | Mean Stay | Med Stay | Std Dev Stay | ...
+  - and scramble by FID. I would expect _a_ summary stat to come out near 1
+- Also did some figure splicing of transfers over time, which turned out nice, need to adjust some thigs for clarity, otherwise OK.
+- We need to think of at least 1 more figure to include as a primary result.
+
+
+[20/05]
+- look at prop. at home
+  - exists as a script, now need to clean up the plot
+    - label overlaps, time concordance
