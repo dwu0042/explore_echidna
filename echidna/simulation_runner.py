@@ -30,15 +30,8 @@ class Runner():
     def __init__(
         self,
         simulation_class: str,
-        **kwargs,
-    ):
-        raise NotImplemented
-
-    def __full_init__(
-        self,
-        simulation_class: str,
-        ordering_file: PathLike,
         graph_file: PathLike,
+        ordering_file: PathLike,
         prob_final_file: PathLike,
         beta: SupportsFloat,
         output_file: PathLike,
@@ -47,7 +40,6 @@ class Runner():
         sim_n_seed_infections: SupportsInt = 1,
         sim_dt: SupportsFloat = 1.0,
         sim_track_movement = False,
-        pseudo_capacity: SupportsFloat | None = None,
         converter_args: Mapping | None = None,
         simulation_args: Mapping | None = None,
     ):
@@ -69,8 +61,20 @@ class Runner():
         else:
             self._create_parameters()
 
+        self.base_sim_args = dict(
+            n_seed_events=sim_n_seed_events,
+            n_seed_infections=sim_n_seed_infections,
+            dt=sim_dt,
+            track_movement=sim_track_movement,
+        )
         if simulation_args is None: simulation_args = dict()
-        self._create_simulator(**simulation_args)
+        self.simulation_args = dict(
+            **self.base_sim_args
+        )
+        self.simulation_args.update(simulation_args)
+        self._create_simulator(
+            **self.simulation_args,
+        )
 
     def _create_parameter_converter(self, **kwargs):
 
@@ -105,6 +109,11 @@ class Runner():
         else:
             full_sizes = self.ordering.sizes
 
+        # here we map converter-based args
+        for arg, val in simulator_args.items():
+            if callable(val):
+                simulator_args[arg] = val(self.converter)
+
         self.sim = self.base_classes['simulator'](
             full_size=full_sizes,
             parameters=self.parameters,
@@ -123,7 +132,21 @@ class Runner():
         self.sim.simulate(until=until, nostop=nostop)
 
 
-    def export(self, to, identity, with_movers=False, **kwargs):
+    def export(self, to=None, identity=None, with_movers=False, **kwargs):
+
+        if to is None:
+            to = self.output_file
+        
+        if identity is None:
+            identity = self._export_identity()
 
         self.sim.export_history(to, identity=identity, with_movers=with_movers, **kwargs)
 
+
+    def _export_identity(self) -> str:
+        
+        iden = ""
+        if hasattr(self.sim, 'rng'):
+            iden = self.sim.rng.state['state']['state']
+        
+        return iden
