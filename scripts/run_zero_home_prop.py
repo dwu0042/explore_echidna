@@ -1,12 +1,8 @@
 from collections import defaultdict
 import functools
-from typing import Mapping
 import numpy as np
-from scipy import linalg, stats
-from matplotlib import pyplot as plt
-from matplotlib import dates as mpldates
+from matplotlib import pyplot as plt, colors as mcolors
 import seaborn as sns
-import polars as pl
 import h5py
 from pathlib import Path
 
@@ -27,16 +23,36 @@ def gather(write=True):
         if write:
             write_to_file = dir / "hosp_presence.csv"
             np.savetxt(write_to_file, histories[model], delimiter=',')
-            print(f"written to {write_to_file}")
+            print(f"presence written to {write_to_file}")
     return histories
 
-def load():
+def load(fname="hosp_presence.csv"):
     histories = {
-        dir.stem: np.loadtxt(dir/"hosp_presence.csv", delimiter=',')
+        dir.stem: np.loadtxt(dir/fname, delimiter=',')
         for dir in (root / "simulations/zero_sims_resized/" ).iterdir()
     }
 
     return histories
+
+
+def compute_heatmaps(hists, write=True):
+    hms = {model: heatmap(hist_vals)[1] for model, hist_vals in hists.items()}
+    # adjust temporal for dt
+    hms['temporal'] = np.hstack([
+        (hms['temporal'][:,:-1:2] + hms['temporal'][:, 1::2]) / 2,
+        hms['temporal'][:,-1:],
+    ])
+
+    if write:
+        for model, hmarr in hms.items():
+            write_to_file = root / "simulations/zero_sims_resized" / model / "hosp_presence_heat.csv"
+            np.savetxt(write_to_file, hmarr, delimiter=',')
+            print(f"heatmap written to {write_to_file}")
+
+    return hms
+
+def load_heatmaps():
+    return load("hosp_presence_heat.csv")
 
 _BASE_DATE = np.datetime64('2011-01', 'M')
 _MAX_DATE = np.datetime64('2018-12', 'M')
@@ -74,11 +90,57 @@ def plot_heatmap(*args, **kwargs):
 
     return ax
 
-def mega_heatmap(hists, vmax=1500):
-    hms = {model: heatmap(hist_vals)[1] for model, hist_vals in hists.items()}
+_DTS = defaultdict(lambda: 1.0)
+_DTS['temporal'] = 0.5
+def single_heatmap(model, hist, bins=(540, 31), norm=None, ax=None, cbar=False):
+    if ax is None:
+        fig, ax = plt.subplots()
+    
+    if norm is None:
+        norm = mcolors.Normalize()
+    
+    dt = _DTS[model]
+    ts = (np.arange(hist.shape[1]) * dt).reshape((1, -1))
+    ts_arr = np.repeat(ts, hist.shape[0], axis=0)
+
+    *_, coll = ax.hist2d(
+        ts_arr.flatten(), 
+        30 - hist.flatten(),
+        bins=bins,
+        density=True,
+        norm=norm,
+    )
+
+    if cbar:
+        ax.figure.colorbar(coll, ax=ax)
+
+    return coll, ax
+
+_ax_order = {
+    'temporal': 0,
+    'snapshot': 1,
+    'static': 2,
+    'naive_static': 3,
+}
+def final_heatmap(hists, norm=mcolors.PowerNorm(0.5)):
+
+    fig, axs = plt.subplots(nrows=4, figsize=[16, 9], sharex=True)
+    axs_flat = axs.flatten()
+    for k, h in hists.items():
+        ax = axs_flat[_ax_order[k]]
+        coll, _ = single_heatmap(k, h, norm=norm, ax=ax)
+        norm = coll.norm
+        ax.set_ylabel(k.replace('_', ' '))
+    set_xdatelabels(h, axs_flat[-1])
+    fig.subplots_adjust(hspace=0.3)
+    fig.colorbar(coll, ax=axs, label='Density', extend='max')
+    
+    return fig, axs
+
+def mega_heatmap(vmax=1500):
+    hms = load_heatmaps() 
     fig, axs = plt.subplots(nrows=4, figsize=[16, 9], sharex=True)
     for ax, (k, hmv) in zip(axs.flatten(), hms.items()):
-        if k == "temporal": hmv=hmv[:,::2]
         sns.heatmap(data=hmv[::-1,:], vmax=vmax, ax=ax, cmap='inferno', cbar=False)
         ax.set_title(k)
         ax.set_ylim([-0.5, 30.5])
