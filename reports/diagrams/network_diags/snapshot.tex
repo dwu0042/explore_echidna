@@ -1,0 +1,111 @@
+\documentclass[tikz, margin=2mm]{standalone}
+
+\usetikzlibrary{
+    arrows.meta, 
+    positioning, 
+    shapes.geometric, 
+    shapes.arrows,
+    decorations.pathmorphing,
+}
+
+
+\newlength{\tempdima}
+\newlength{\tempdimb}
+
+\tikzset{storage gap/.initial=1em}
+
+\pgfdeclareshape{storage}{
+\savedanchor{\northeast}{
+    \setlength{\tempdima}{\pgfkeysvalueof{/tikz/storage gap}}
+    \tempdima=0.5\tempdima
+    \tempdimb=\tempdima
+    \addtolength{\tempdima}{\pgfkeysvalueof{/pgf/inner xsep}}
+    \addtolength{\tempdimb}{\pgfkeysvalueof{/pgf/inner ysep}}
+    \pgfpoint{\dimexpr \tempdima + .5\wd\pgfnodeparttextbox}{\dimexpr \tempdimb + 0.5\ht\pgfnodeparttextbox +.5\dp\pgfnodeparttextbox}}
+\savedanchor{\southwest}{
+    \setlength{\tempdima}{\pgfkeysvalueof{/tikz/storage gap}}
+    \tempdima=0.5\tempdima
+    \tempdimb=\tempdima
+    \addtolength{\tempdima}{\pgfkeysvalueof{/pgf/inner xsep}}
+    \addtolength{\tempdimb}{\pgfkeysvalueof{/pgf/inner ysep}}
+    \pgfpoint{\dimexpr -\tempdima -.5\wd\pgfnodeparttextbox}{\dimexpr -\tempdimb -.5\ht\pgfnodeparttextbox -.5\dp\pgfnodeparttextbox}}
+
+\anchor{center}{\pgfpointorigin}  % within the node, (0,0) is the center
+
+\inheritanchorborder[from=rectangle]
+\inheritanchor[from=rectangle]{north}
+\inheritanchor[from=rectangle]{north west}
+\inheritanchor[from=rectangle]{north east}
+\inheritanchor[from=rectangle]{center}
+\inheritanchor[from=rectangle]{west}
+\inheritanchor[from=rectangle]{east}
+\inheritanchor[from=rectangle]{mid}
+\inheritanchor[from=rectangle]{mid west}
+\inheritanchor[from=rectangle]{mid east}
+\inheritanchor[from=rectangle]{base}
+\inheritanchor[from=rectangle]{base west}
+\inheritanchor[from=rectangle]{base east}
+\inheritanchor[from=rectangle]{south}
+\inheritanchor[from=rectangle]{south west}
+\inheritanchor[from=rectangle]{south east}
+
+\anchor{text} % this is used to center the text in the node
+{\setlength{\tempdima}{\pgfkeysvalueof{/tikz/storage gap}}
+    \pgfpoint{\dimexpr 0.5\tempdima -.5\wd\pgfnodeparttextbox}{\dimexpr -0.5\tempdima -.5\ht\pgfnodeparttextbox+.5\dp\pgfnodeparttextbox }}
+
+\backgroundpath{% draw border etc
+\pgfpathrectanglecorners{\southwest}{\northeast}
+\pgfextractx{\tempdima}{\southwest}
+\pgfextracty{\tempdimb}{\southwest}
+\addtolength{\tempdima}{\pgfkeysvalueof{/tikz/storage gap}}
+\pgfpathmoveto{\pgfpoint{\tempdima}{\tempdimb}}
+\pgfextracty{\tempdimb}{\northeast}
+\pgfpathlineto{\pgfpoint{\tempdima}{\tempdimb}}
+\addtolength{\tempdimb}{-\pgfkeysvalueof{/tikz/storage gap}}
+\pgfextractx{\tempdima}{\southwest}
+\pgfpathmoveto{\pgfpoint{\tempdima}{\tempdimb}}
+\pgfextractx{\tempdima}{\northeast}
+\pgfpathlineto{\pgfpoint{\tempdima}{\tempdimb}}
+}}
+
+\begin{document}
+
+\begin{tikzpicture}[scale = 0.20]
+
+\tikzset{
+    wavy/.style={
+        decorate,
+        decoration={
+            snake,
+            pre length=2mm,
+            post length=2mm
+        }
+    }
+}
+
+\node at (19.0,-15.0) [draw,solid,minimum width=1.6 cm,minimum height=1.6 cm,inner sep=0](A0){A};
+\node at (19.0,-47.0) [draw,solid,minimum width=1.6 cm,minimum height=1.6 cm,inner sep=0](B0){B};
+\node at (61.0,-15.0) [draw,solid,minimum width=1.6 cm,minimum height=1.6 cm,inner sep=0](A1){A};
+\node at (61.0,-47.0) [draw,solid,minimum width=1.6 cm,minimum height=1.6 cm,inner sep=0](B1){B};
+\node at (48.0,-30.0) [draw,storage,minimum width=1.6 cm, minimum height=1.6 cm](ATHOME){home};
+
+% direct transfers
+\draw [-stealth,solid](A0.247)|-++(0,-1)-|(B0.113);
+\draw [-stealth,solid](B0.67)|-++(0,1)-|(A0.293);
+\draw [-stealth,solid](A1.247)|-++(0,-1)-|(B1.113);
+\draw [-stealth,solid](B1.67)|-++(0,1)-|(A1.293);
+
+% time consistency
+\draw [-stealth,wavy](A0.east)--(A1.west);
+\draw [-stealth,wavy](B0.east)--(B1.west);
+\draw [-stealth,wavy](ATHOME.east)--(75.0,-30.0);
+
+% indirect
+\draw [in=90,out=0,-stealth,dashed](A0.338)to(ATHOME.113);
+\draw [in=270,out=0,-stealth,dashed](B0.23)to(ATHOME.248);
+\draw [in=180,out=270,-stealth,dashed](ATHOME.293)to(B1.158);
+\draw [in=180,out=90,-stealth,dashed](ATHOME.68)to(A1.203);
+
+\end{tikzpicture}
+
+\end{document}
