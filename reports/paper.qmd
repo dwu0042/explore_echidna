@@ -10,6 +10,8 @@ format:
         \usepackage{setspace}
         \doublespacing
     keep-tex: true
+    fig-format: png
+    fig-dpi: 300
 author:
   - name: Michael J Lydeamore
     affiliations:
@@ -109,7 +111,7 @@ execute:
 import numpy as np
 from pathlib import Path
 import polars as pl
-from matplotlib import pyplot as plt, dates as mdates
+from matplotlib import pyplot as plt, dates as mdates, colors as mcolors
 import seaborn as sns
 import calendar
 from itertools import accumulate
@@ -120,9 +122,9 @@ root = Path("../").resolve()
 
 sns.set_theme(
   context='paper',
-  style='white',
+  style='ticks',
   palette='colorblind',
-  font='cmr10',
+  font='serif',
 )
 ```
 
@@ -167,7 +169,6 @@ Temporal networks are also not new phenomena in modelling infectious diseases pr
 [ref] [does thing]. However, edges of temporal networks typically represent 
 
 ## Network models of patient transfers for temporal fidelity
-
 
 :::{.hidden}
 $$
@@ -302,7 +303,7 @@ $$\rho_{uv}(s,t) = \rho_{uv}(t) = \frac{\sum_{s: (t-s) \geq \omega} {w_{uv}(s, t
 
 ### Temporal Model
 
-For the temporal network, we make a choice of the time discretisation $\omega$. That is, events that occur within a time window $[\tau, \tau+\omega)$ are collapsed and aggregated to occur at time $\tau$. Over the observation (and simulation) period, we will have a series of time window boundaries $\{\tau_0, \tau_1, \dots\}$. We denote the smallest value in that set larger than a given time $t$ to be $\lceil{}t\rceil{}_\omega$
+For the temporal network, we make a choice of the time discretisation $\omega$. Events that occur within a time window $[\tau, \tau+\omega)$ are collapsed and aggregated to occur at time $\tau$. Over the observation (and simulation) period, we will have a series of time window boundaries $\{\tau_0, \tau_1, \dots\}$. We denote the smallest value in that set larger than a given time $t$ to be $\lceil{}t\rceil{}_\omega$
 For the readmission process, we assume that individuals that would readmit within a given time window $[\tau, \tau+\omega)$ do so uniformly. 
 This yields:
 
@@ -365,8 +366,10 @@ for model, df in metrics.items():
 
 fig = plt.figure()
 ax = fig.add_subplot()
-for model, dist in hitting_time_dists.items():
-    ax.plot(dist, np.linspace(0, 1, len(dist), endpoint=False), label=model)
+model_order = ["naive_static", "static", "snapshot", "temporal"] 
+for model in model_order:
+    dist = hitting_time_dists[model]
+    ax.plot(dist, np.linspace(0, 1, len(dist), endpoint=False), label=model.replace('_', ' '))
 
 ax.set_xlabel('hitting time')
 ax.set_ylabel('ECDF')
@@ -388,14 +391,15 @@ extent_bins = np.arange(max_extent+2)
 fig, axz = plt.subplots(nrows=4, sharey=True, sharex=True)
 axs = axz.flatten()
 
-model_order = sorted(extent_dists.keys())
+model_order = ['temporal', 'snapshot', 'static', 'naive_static'] 
 for ax, model in zip(axs, model_order):
   ax.hist(
     extent_dists[model],
     bins=extent_bins,
     density=True,
   )
-  ax.set_ylabel(model)
+  ax.set_ylabel(model.replace('_', '\n'))
+  sns.despine(ax=ax)
 
 _ = axs[-1].set_xlabel('Extent')
 ```
@@ -407,7 +411,11 @@ histories = {
   dir.stem: np.loadtxt(dir/"hosp_presence.csv", delimiter=',')
   for dir in (root / "simulations/zero_sims_resized/" ).iterdir()
 }
-
+```
+```{python}
+#| label: fig-homeprop-heatmap
+#| fig-cap: Distribution of the number of indivdiuals at home (not in the hospital system) over the duration of the simulation for each model type.
+ 
 _BASE_DATE = np.datetime64('2011-01', 'M')
 _MAX_DATE = np.datetime64('2018-12', 'M')
 def set_xdatelabels(hist, ax, spacing=12, dt=1.0):
@@ -425,34 +433,55 @@ def set_xdatelabels(hist, ax, spacing=12, dt=1.0):
 
     return ax.get_xticks()
 
-def heatmap(hist, nmax=30):
-    # hist is 2D
-    bins = np.arange(nmax+2)
-    hist_heat = np.array([
-        np.histogram(hist[:, i], bins=bins)[0]
-        for i in range(hist.shape[1])
-    ]).T
+_DTS = defaultdict(lambda: 1.0)
+_DTS['temporal'] = 0.5
+def single_heatmap(model, hist, bins=(540, 31), norm=None, ax=None, cbar=False):
+    if ax is None:
+        fig, ax = plt.subplots()
+    
+    if norm is None:
+        norm = mcolors.Normalize()
+    
+    dt = _DTS[model]
+    ts = (np.arange(hist.shape[1]) * dt).reshape((1, -1))
+    ts_arr = np.repeat(ts, hist.shape[0], axis=0)
 
-    return bins, hist_heat
-```
+    *_, coll = ax.hist2d(
+        ts_arr.flatten(), 
+        30 - hist.flatten(),
+        bins=bins,
+        density=True,
+        norm=norm,
+    )
 
-```{python}
-def mega_heatmap(hists, vmax=1500):
-  hms = {model: heatmap(hist_vals)[1] for model, hist_vals in hists.items()}
-  fig, axs = plt.subplots(nrows=4, figsize=[16, 9], sharex=True)
-  for ax, (k, hmv) in zip(axs.flatten(), hms.items()):
-      if k == 'temporal':
-        hmv = hmv[:,::2]
-      sns.heatmap(data=hmv[::-1,:], vmax=vmax, ax=ax, cmap='inferno', cbar=False)
-      ax.set_title(k)
-      ax.set_ylim([-0.5, 30.5])
-      ax.set_yticks([0, 10, 20, 30])
-  set_xdatelabels(hmv, ax)
-  fig.colorbar(ax.collections[0], ax=axs, label='Count', extend='max')
+    if cbar:
+        ax.figure.colorbar(coll, ax=ax)
 
-  return fig
+    return coll, ax
 
-_ = mega_heatmap(histories)
+_ax_order = {
+    'temporal': 0,
+    'snapshot': 1,
+    'static': 2,
+    'naive_static': 3,
+}
+def final_heatmap(hists, norm=mcolors.PowerNorm(0.5)):
+
+    fig, axs = plt.subplots(nrows=4, figsize=[8.25, 5.25], sharex=True)
+    axs_flat = axs.flatten()
+    for k, h in hists.items():
+        ax = axs_flat[_ax_order[k]]
+        coll, _ = single_heatmap(k, h, norm=norm, ax=ax)
+        norm = coll.norm
+        ax.set_ylabel(k.replace('_', '\n'))
+    set_xdatelabels(h, axs_flat[-1])
+    fig.subplots_adjust(hspace=0.3)
+    fig.colorbar(coll, ax=axs, label='Density', extend='max')
+    fig.supylabel("Number at home ($N_0=30$)")
+    
+    return fig, axs
+
+_ = final_heatmap(histories)
 ```
 
 
@@ -462,7 +491,16 @@ We have investigated the effects of modelling the network representations of pat
 One unique temporal property of the networks here is that edges can connect nodes not just in space, but also in time. This leads to a reservoir of individuals of interest that exist outside of the healthcare system that will return at a later time, which leads to rich temporal dynamics. These behaviours are poorly captured by a naïve static network; including this mechanism on top of a static network representation can help significantly in moving the qualitative behaviour fo the 
 
 
-# Supplementary
+# References
+::: {#refs}
+:::
+
+::: {.content-visisble when-format="pdf"}
+\newpage
+:::
+
+
+# Supplementary 
 
 ## Verification of simulation results
 
@@ -541,3 +579,25 @@ sns.despine(ax=ax)
 
 Verification of the empirical simulation results against analytical results. We see that at early time the mean empirical and analytical expected hitting times agree, with a large right-hand censoring effect. When computing the empirical means, we allow `{python} n_null_accept` nulls across all realisations.
 :::
+
+## Uniform dissapation of at-home individuals
+
+We know that for a random variable $t$ uniformly distributed between $[\tau, \tau+\omega]$, the pdf and survival functions are, respectively:
+
+$$
+\begin{gathered}
+f(t) = \frac{1}{\omega}, \\
+S(t) = \frac{(\tau+\omega) - t}{\omega},
+\end{gathered}
+$$
+
+which results in a hazard function
+
+$$
+\lambda(t) = \frac{1}{(\tau + \omega) - t}.
+$$
+
+This hazard function can be simulated approximately in our DTMC framework by taking small time steps, and modelling the number of individuals $dN$ that move in a time step $dt$, where $n(t)$ is the number of inidividuals still present at time $t$ as
+
+$$dN(t) \sim \text{Binomial}(n(t), dt\lambda(t)).$$
+
