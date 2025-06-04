@@ -134,41 +134,33 @@ Antimicrobial resistance poses a great threat to human health and development. [
 Globally, it poses a large burden, operationally and economically, on hospital systems.
 In Australia, we see [significant] economic burden from AMR.
 this impact could become more significant if we had incursion and subsequent establishment of new [strains] of AMR. 
-One X of interest is carbapenemase-producing enterobacteriacea (CPE). 
+One X of interest, for example, is carbapenemase-producing enterobacteriacea (CPE). 
 Australia has an endemic strain of CPE -- IMP4 -- but this is at a relatively low level. 
 This already causes some level of burden, and introduced strains would further multiply this.
 
+The spread of AMR in these systems has been studied by modelling the hospital system as a network or interconnected healthcare facilities. For example, [@donker_patient_2010] examines hospitals in the Netherlands to study the spread of MRSA, followed by a similar analysis of the UK hospital system in [@donker_hospital_2012]. 
+Ultimately, the aim of studying these systems as networks is leveraging the network framework when designing surveillance and control protocols for emerging and recurring AMR outbreaks. This has been analysed to some extent in [@ciccolini_efficient_2014], for example; but such analyses use 
 
-## Setting 
-
-Victoria, Australia, has a population of 7.0 million people [@ABS_state_populations]. Its hospital system consists of $N_x = 338$ hospital campuses, which vary in size, case mix and services. 
-
-Hospital admissions data was sourced from the Victorian Admitted Episdoes Dataset (VAED) [@VAED_official].
-In particular, admissions data from 1 January 2011 to 9 December 2020 (3631 days) was used in this study. All Victorian hospital admissions during this study period are included. The total number of admission records is 26876787.
-This data was aggregated into time-discretised temporal networks (described below), and exported from the database; further analysis as presented in this paper is performed on external machines with no access to identifiable protected health information.
-
-Some exploratory analysis of this data was done in by [@lydeamore_carbapenemase-producing_2024].
+There are existing results that show that accounting for temporality in network models results in lower control costs [@li_fundamental_2017]. In the public health space, a lot of attention has been spent on patient-staff and staff-staff contacts within a hospital, for example in [@barnes_dynamic_2010; @martinet_link_2018].
 
 # Methods
 
-## Existing modelling {#sec-network-modelling}
+## Setting 
 
-There has been some existing work that analyse hospital systems using the framework of network analysis. 
-They define a network consisting of hospitals as nodes, connected by edges that have weights representative of the amount of patient movement between those hospitals.
-Using these networks, hospitals and links that are important to mrough hospital systems has been studied in the past as a network phenomenon [@donker_patient_2010]. 
-The movement of patients through the hospital systems induced by referrals can be represented as edges between hospital nodes. 
-However, these networks are usually presented as static, where movement over a large period of time has been aggregated to form a single network. 
-It is known, especially in other applications, that temporal networks can display different behaviour than the static equivalents. 
+Victoria, Australia, has a population of 7.0 million people [@ABS_state_populations]. Its hospital system consists of $N_x = 338$ healthcare facilities that vary in size, case mix and services. 
+Admissions data was sourced from the Victorian Admitted Episdoes Dataset (VAED) [@VAED_official].
+In particular, data from 1 January 2011 to 9 December 2020 (3631 days) was used in this study. All Victorian hospital admissions during this study period are included. The total number of admission records is 26876787.
+This data was aggregated into time-discretised temporal networks (described below), and exported from the database; further analysis as presented in this paper is performed on external machines with no access to identifiable protected health information.
+
+Some exploratory analysis of this data was done in [@lydeamore_carbapenemase-producing_2024] using a static network framework.
+
+## Network models of patient transfers for temporal fidelity
+
 In this paper, we investigate these differences using the Victorian hospital system as a baseline for comparison. 
 In particular, we investigate the impacts of the inclusion of modelling the period of time that patients spend at home between admissions, and the effect of approximating the granulovement around the hospital system by analysing measures of centrality and clustering.
 A weighted, directed network can be used to construct a Markov chain that in turn can be analysed or simulated to understand the dynamics of a spreading infectious disease.
 For each edge $e_{ij}$ with a number of observed movements $w_{ij}$ over some time period $\tau$, 
 we can construct a reaction that has a hazard function $\lambda_{ij} = w_{ij} / \tau$. This implicitly constructs a process that has inter-event times (i.e. times between distinct patient movements) that are exponentially distributed $\text{Exp}(\lambda_{ij})$.
-
-Temporal networks are also not new phenomena in modelling infectious diseases processes. For example, 
-[ref] [does thing]. However, edges of temporal networks typically represent 
-
-## Network models of patient transfers for temporal fidelity
 
 :::{.hidden}
 $$
@@ -283,7 +275,7 @@ _ = ax.set_ylabel('Number of patient transfers')
 We approach this using static network snapshots of the hospital system over time. 
 
 For the snapshot model, we choose a snapshot duration $\omega$. This defines the threshold duration of an indirect transfer.
-This introduces an new intermediary state variable $z'$ that contains the individuals that would enter $z$ within the duration of a given snapshot $[t, t+\omega]$, so that they do not immediately readmit to their next hospital.
+This introduces an new intermediary state variable $z'$ that contains the individuals that would enter $z$ within the duration of a given snapshot $[t, t+\omega]$, so that they do not immediately readmit at their next healthcare facility.
 This alters the indirect transfer processes to
 
 $$
@@ -317,7 +309,7 @@ $$\rho_{uv}(s,t) = \frac{1}{\lceil{}t\rceil{}_\omega - t}$$
 ## Simulation Study
 
 Since analytical results are intractable for the more complex network models, we resort to simulation as a statistical proxy.
-Movements of marked individuals are tracked for each network type, when they are seeded at each facility in the network at $t=0$. The hitting time $k_j$ to each other hospital is recorded.
+Movements of marked individuals are tracked for each network type, when they are seeded at each facility in the network at $t=0$. The hitting time $k_j$ to each other healthcare facililty is recorded.
 We mark $N_0 = 30$ individuals at the start of each realisation; we generate $N_r=20$ realisations for each seed facility.
 
 We plot the (empirical) cumulative distribution function of the hitting times for all pairs of seed facility and target facility in @fig-ecdf
@@ -577,7 +569,7 @@ sns.despine(ax=ax)
 ```
 
 
-Verification of the empirical simulation results against analytical results. We see that at early time the mean empirical and analytical expected hitting times agree, with a large right-hand censoring effect. When computing the empirical means, we allow `{python} n_null_accept` nulls across all realisations.
+Verification of the empirical simulation results against analytical results. We see that at early time the mean empirical and analytical expected hitting times agree, with a large right-hand censoring effect. When computing the empirical means, we allow `{python} n_null_accept` nulls (where the target facility is not hit) across all realisations.
 :::
 
 ## Uniform dissapation of at-home individuals

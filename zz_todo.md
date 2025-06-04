@@ -298,3 +298,8 @@ and larrgeish and smallish
 - look at prop. at home
   - exists as a script, now need to clean up the plot
     - label overlaps, time concordance
+
+
+[03/06]
+- this package: https://ctan.org/pkg/tikz-network
+  - can recreate the manim diagrma we drew, looks nice, haven't seen compat
