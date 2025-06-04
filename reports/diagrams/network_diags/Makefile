@@ -1,7 +1,7 @@
-all: snapshot temporal
+DIAG_IN = $(wildcard *.tex)
+DIAG_OUT = $(addsuffix .pdf,$(basename $(DIAG_IN)))
 
-snapshot:
-	tectonic snapshot.tex
+%.pdf: %.tex
+	tectonic $<
 
-temporal:
-	tectonic temporal.tex
+default: $(DIAG_OUT)
