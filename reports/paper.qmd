@@ -162,13 +162,6 @@ A weighted, directed network can be used to construct a Markov chain that in tur
 For each edge $e_{ij}$ with a number of observed movements $w_{ij}$ over some time period $\tau$, 
 we can construct a reaction that has a hazard function $\lambda_{ij} = w_{ij} / \tau$. This implicitly constructs a process that has inter-event times (i.e. times between distinct patient movements) that are exponentially distributed $\text{Exp}(\lambda_{ij})$.
 
-:::{.hidden}
-$$
-\newcommand{\dd}[2][t]{\frac{\mathrm{d}#2}{\mathrm{d}#1}}
-\newcommand{\ceil}[1]{\lceil#1\rceil}
-$$
-:::
-
 ![Sketch of the generalised model with processes of (1) permanent discharge ($u \to \emptyset$), (2) direct transfer ($u \to v$), (3) return home ($u \to h_{uv}$), (4) readmission $h_{uv} \to v$).](diagrams/movement_general_case.pdf){#fig-general-diagram}
 
 Here, $u$ and $v$ are locations (potentially identical locations), $s$ and $t$ are times. We take that $t \geq s$.
@@ -190,6 +183,19 @@ $$
 $$
 
 We note that as a consequence of the model structure, the hazards can also be interpreted as modelling the hodling time an individual patient spends in each state. 
+
+:::{#fig-specific-model-diagrams layout-ncol=2 layout-nrow=2 layout-valign="bottom"}
+
+![Naïve static](diagrams/network_diags/naive_static.pdf)
+
+![Static](diagrams/network_diags/static.pdf)
+
+![Snapshot](diagrams/network_diags/snapshot.pdf)
+
+![Temporal](diagrams/network_diags/temporal.pdf)
+
+Schematic diagrams of each type of network representation for a two-facility network. Solid arrows represent direct transfers, dashed arrows represent indirect transfers, and wavy lines represent temporal consistency.
+:::
 
 ### Naïve Static Model
 
@@ -232,16 +238,16 @@ aggregated_movement = (
   .sort('t')
   .with_columns(
     date=pl.lit(base_date) + pl.duration(days=pl.col('t')),
-    my=pl.col('w').rolling_mean(window_size=365, center=True),
-    mw=pl.col('w').rolling_mean(window_size=7, center=True),
-    mm=pl.col('w').rolling_mean(window_size=28, center=True),
+    my=pl.col('w').rolling_mean(window_size=365, center=True), # yearly ma
+    mw=pl.col('w').rolling_mean(window_size=7, center=True), # weekly ma
+    mm=pl.col('w').rolling_mean(window_size=28, center=True), # monthly ma
   )
 )
 ```
 
 ```{python}
 #| label: fig-movement-over-time
-#| fig-cap: Number of patient transfers throughout the network increases over time. Right-hand end of data exhibits censoring behaviour, since we do not see long-terms readmissions beyond the end of the data observation period. We also observe seasonal behaviour (most visually obvious with periods of a year and a week), and consistent decreases of transfers during public holiday periods, especially at the end of the year.
+#| fig-cap: Number of patient transfers throughout the network increases over time. Moving averages plotted in red with periods of 1 year (main plot) and 1 week (inset). Right-hand end of data exhibits censoring behaviour, since we do not see long-terms readmissions beyond the end of the data observation period. We also observe seasonal behaviour (most visually obvious with periods of a year and a week), and consistent decreases of transfers during public holiday periods, especially at the end of the year.
 fig = plt.figure()
 ax = fig.add_subplot()
 sns.despine(ax=ax)
@@ -399,6 +405,7 @@ _ = axs[-1].set_xlabel('Extent')
 One striking feature 
 
 ```{python}
+#| label: compute-load-hosp-presence
 histories = {
   dir.stem: np.loadtxt(dir/"hosp_presence.csv", delimiter=',')
   for dir in (root / "simulations/zero_sims_resized/" ).iterdir()
