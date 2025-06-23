@@ -1,0 +1,37 @@
+\documentclass[tikz, margin=2mm]{standalone}
+
+\usetikzlibrary{
+    arrows.meta, 
+    positioning, 
+    shapes.geometric, 
+    shapes.arrows,
+    decorations.pathmorphing,
+}
+
+
+\begin{document}
+
+\begin{tikzpicture}
+
+
+    \node at (0.0, 0.0) (NORTHWEST){};
+    \node at (16.0, 10.0) (SOUTHEAST){};
+
+    \node at (2.0, 8.0) [draw,solid,minimum width=1 cm,minimum height=1 cm,inner sep=0](A){$u$};
+    \node at (2.0, 2.0) [draw,solid,minimum width=1 cm,minimum height=1 cm,inner sep=0](B){$v$};
+    \node at (6.0, 5.0) [draw,circle,minimum width=1 cm,inner sep=0](H){$h_{uv}$};
+
+    \node at (10.0, 8.0) [draw,solid,minimum width=1 cm,minimum height=1 cm,inner sep=0](A2){$u$};
+    \node at (10.0, 2.0) [draw,solid,minimum width=1 cm,minimum height=1 cm,inner sep=0](B2){$v$};
+    \node at (14.0, 5.0) [draw,circle,minimum width=1 cm,inner sep=0](H2){$h_{uv}$};
+
+    \draw [out=225,in=135,-stealth,solid](A.225)to(B.135);
+    \draw [out=0,in=270,-stealth,densely dashed](B.0)to(H.270);
+
+    \draw [out=90,in=0,-stealth,densely dashed](H2.90)to(A2.0);
+
+    \draw [loosely dashed, very thick](8.0, 0.0)--(8.0, 10.0);
+
+\end{tikzpicture}
+
+\end{document}

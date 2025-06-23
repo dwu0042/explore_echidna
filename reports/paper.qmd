@@ -111,12 +111,13 @@ execute:
 import numpy as np
 from pathlib import Path
 import polars as pl
-from matplotlib import pyplot as plt, dates as mdates, colors as mcolors
+from matplotlib import pyplot as plt, dates as mdates, colors as mcolors, cm
 import seaborn as sns
 import calendar
 from itertools import accumulate
 from collections import defaultdict
 import datetime
+import copy
 
 root = Path("../").resolve()
 
@@ -141,7 +142,11 @@ This already causes some level of burden, and introduced strains would further m
 The spread of AMR in these systems has been studied by modelling the hospital system as a network or interconnected healthcare facilities. For example, [@donker_patient_2010] examines hospitals in the Netherlands to study the spread of MRSA, followed by a similar analysis of the UK hospital system in [@donker_hospital_2012]. 
 Ultimately, the aim of studying these systems as networks is leveraging the network framework when designing surveillance and control protocols for emerging and recurring AMR outbreaks. This has been analysed to some extent in [@ciccolini_efficient_2014], for example; but such analyses use 
 
+
 There are existing results that show that accounting for temporality in network models results in lower control costs [@li_fundamental_2017]. In the public health space, a lot of attention has been spent on patient-staff and staff-staff contacts within a hospital, for example in [@barnes_dynamic_2010; @martinet_link_2018].
+
+Perhaps most pertinently, [@belik_leveraging_2017] explores patient referral networks using a temporal network methodology, and also consider the effect of community stays by augmenting their temporal network with additional edges corresponding to readmissions that occur within a period of $k$ days (representative of the infectious period). Here, we will show that 
+
 
 # Methods
 
@@ -156,8 +161,52 @@ Some exploratory analysis of this data was done in [@lydeamore_carbapenemase-pro
 
 ## Network models of patient transfers for temporal fidelity
 
-In this paper, we investigate these differences using the Victorian hospital system as a baseline for comparison. 
-In particular, we investigate the impacts of the inclusion of modelling the period of time that patients spend at home between admissions, and the effect of approximating the granulovement around the hospital system by analysing measures of centrality and clustering.
+In this paper, we investigate these differences using the Victorian hospital system as a baseline for comparison. Qualitatively, there are mechanisms implicit in the data that are not previously well-modelled, and may be of importance to constructing robust control measures. Critically, we notice that the distribution of readmission times (the time from a discharge of a given patient from a facility to next admission of that patient at any facility), as plotted in @fig-readmission-time, are not well modelled by an exponential distribution, i.e. poorly approximated by Markov processes.
+
+
+```{python}
+#| label: fig-readmission-time
+#| fig-cap: Distribution of empirical readmission times (time from discharge to next admission), truncated at 365 days; and best-fit exponential (via MLE).
+
+readmission_df = pl.read_parquet(root / "data/concordant_networks/readmission_time.parquet")
+readmission_df = (readmission_df
+  .with_columns(
+    Density = pl.col('count') / pl.col('count').sum()
+  )
+  .rename(
+    {
+      'readmission_time': 'Readmission Time [days]', 
+      'count': 'Count',
+    }
+  )
+)
+
+fig, ax = plt.subplots()
+
+sns.scatterplot(readmission_df, x='Readmission Time [days]', y='Density', ax=ax, label='data')
+sns.despine(ax=ax)
+
+ax.set_xscale('asinh')
+_xlims = ax.set_xlim(-0.1, None)
+ax.set_yscale('log')
+_ylims = ax.get_ylim()
+
+# get best fit exponential, we know that gamma = 1/mean
+readmission_mean = readmission_df.select(
+  pl.col('Readmission Time [days]') * pl.col('Density')
+).sum().item()
+
+gamma = 1. / readmission_mean
+_xgrid = np.arange(0, 366, 1)
+ax.plot(_xgrid, gamma * np.exp(-(_xgrid * gamma)), color='orange', linestyle='dashed', label='best-fit exponential')
+
+ax.set_ylim(*_ylims)
+ax.set_xlim(*_xlims)
+ax.set_xticks([0, 1, 10, 100])
+
+ax.legend()
+```
+
 A weighted, directed network can be used to construct a Markov chain that in turn can be analysed or simulated to understand the dynamics of a spreading infectious disease.
 For each edge $e_{ij}$ with a number of observed movements $w_{ij}$ over some time period $\tau$, 
 we can construct a reaction that has a hazard function $\lambda_{ij} = w_{ij} / \tau$. This implicitly constructs a process that has inter-event times (i.e. times between distinct patient movements) that are exponentially distributed $\text{Exp}(\lambda_{ij})$.
@@ -186,15 +235,15 @@ We note that as a consequence of the model structure, the hazards can also be in
 
 :::{#fig-specific-model-diagrams layout-ncol=2 layout-nrow=2 layout-valign="bottom"}
 
-![Naïve static](diagrams/network_diags/naive_static.pdf)
+![Naïve static](diagrams/new-networks/naive_static.pdf)
 
-![Static](diagrams/network_diags/static.pdf)
+![Static](diagrams/new-networks/static.pdf)
 
-![Snapshot](diagrams/network_diags/snapshot.pdf)
+![Snapshot](diagrams/new-networks/snapshot.pdf)
 
-![Temporal](diagrams/network_diags/temporal.pdf)
+![Temporal](diagrams/new-networks/temporal.pdf)
 
-Schematic diagrams of each type of network representation for a two-facility network. Solid arrows represent direct transfers, dashed arrows represent indirect transfers, and wavy lines represent temporal consistency.
+Schematic diagrams of each type of network representation for a two-facility network. There exists a direct transfer from $u$ to $v$ and an indirect transfer from $v$ to $u$. 
 :::
 
 ### Naïve Static Model
@@ -301,6 +350,7 @@ $$\rho_{uv}(s,t) = \rho_{uv}(t) = \frac{\sum_{s: (t-s) \geq \omega} {w_{uv}(s, t
 
 ### Temporal Model
 
+
 For the temporal network, we make a choice of the time discretisation $\omega$. Events that occur within a time window $[\tau, \tau+\omega)$ are collapsed and aggregated to occur at time $\tau$. Over the observation (and simulation) period, we will have a series of time window boundaries $\{\tau_0, \tau_1, \dots\}$. We denote the smallest value in that set larger than a given time $t$ to be $\lceil{}t\rceil{}_\omega$
 For the readmission process, we assume that individuals that would readmit within a given time window $[\tau, \tau+\omega)$ do so uniformly. 
 This yields:
@@ -318,7 +368,14 @@ Since analytical results are intractable for the more complex network models, we
 Movements of marked individuals are tracked for each network type, when they are seeded at each facility in the network at $t=0$. The hitting time $k_j$ to each other healthcare facililty is recorded.
 We mark $N_0 = 30$ individuals at the start of each realisation; we generate $N_r=20$ realisations for each seed facility.
 
-We plot the (empirical) cumulative distribution function of the hitting times for all pairs of seed facility and target facility in @fig-ecdf
+We plot the (empirical) cumulative distribution function of the hitting times for all pairs of seed facility and target facility in @fig-ecdf, with a zoom of the early-time distribution in @fig-ecdf-close.
+We see that the naive static network model produces a hitting time distribution that has a large amount of movement of the marked individuals in a short amount of time, and that the full temporal network model produces much less movement.
+This is consistent with what is expected.
+We see that the 
+
+
+
+
 
 ```{python}
 #| label: compute-aggregating-sim-metrics
@@ -369,13 +426,31 @@ for model in model_order:
     dist = hitting_time_dists[model]
     ax.plot(dist, np.linspace(0, 1, len(dist), endpoint=False), label=model.replace('_', ' '))
 
-ax.set_xlabel('hitting time')
+ax.set_xlabel('Hitting Time (days)')
 ax.set_ylabel('ECDF')
 
 ax.legend(loc='lower right')
 sns.despine(ax=ax)
 ```
 
+```{python}
+#| label: fig-ecdf-close
+#| fig-cap: Empirical cumulative distributions of the hitting times between pairs of facilities over approxiumately the first year, for different network models.
+
+fig, ax = plt.subplots()
+for model in model_order:
+    dist = hitting_time_dists[model]
+    ax.plot(dist, np.linspace(0, 1, len(dist), endpoint=False), label=model.replace('_', ' '))
+
+ax.set_xlim(-15, 350)
+ax.set_ylim(-0.025, 0.15)
+
+ax.set_xlabel('Hitting Time (days)')
+ax.set_ylabel('ECDF')
+
+ax.legend(loc='lower right')
+sns.despine(ax=ax)
+```
 
 ```{python}
 #| label: fig-extent
@@ -402,7 +477,12 @@ for ax, model in zip(axs, model_order):
 _ = axs[-1].set_xlabel('Extent')
 ```
 
-One striking feature 
+When comparing the aggregate number of individuals present or not present in the hospital system between models, we see some striking differences. The naïve static model has no capability for discharging individuals out of the system, so is significantly different to the other network models.
+For the other models, after some burn-in period, they reach a (pseudo-)steady state. 
+Notable features:
+- the band at N=0 for the snapshot and temporal network models, where some individuals do not discharge - this is usually due to their seed hospital not existing until sometime much later in the simulation. This cannot be modelled with static networks, so instead in the static network, there are bands of lagging that correspond to lower global rates of discharge.
+- the differing values of steady state for each model. Temporal model has the most at home, followed by the static model, and then the snapshot model.
+- it seems the mechanisms for readmission in the snapshot model lead to periodic bursty readmissions, which results in a lower number of individuals at home.
 
 ```{python}
 #| label: compute-load-hosp-presence
@@ -413,7 +493,7 @@ histories = {
 ```
 ```{python}
 #| label: fig-homeprop-heatmap
-#| fig-cap: Distribution of the number of indivdiuals at home (not in the hospital system) over the duration of the simulation for each model type.
+#| fig-cap: Distribution of the number of individuals at home (not in the hospital system) over the first 3 years of the simulation for each model type.
  
 _BASE_DATE = np.datetime64('2011-01', 'M')
 _MAX_DATE = np.datetime64('2018-12', 'M')
@@ -422,7 +502,8 @@ def set_xdatelabels(hist, ax, spacing=12, dt=1.0):
     # we map the times onto the timedeltas of the simulations
     N = hist.shape[1]
     emp_max_date = (np.timedelta64(int(N*dt), 'D') + _BASE_DATE).astype('datetime64[M]')
-    ax_max_date = np.min([emp_max_date, _MAX_DATE])
+    ax_lim_date = (np.timedelta64(int(np.max(ax.get_xlim())), 'D') + _BASE_DATE).astype('datetime64[M]')
+    ax_max_date = np.min([emp_max_date, _MAX_DATE, ax_lim_date])
 
     dates = np.arange(_BASE_DATE, ax_max_date, np.timedelta64(spacing, 'M'))
 
@@ -434,7 +515,7 @@ def set_xdatelabels(hist, ax, spacing=12, dt=1.0):
 
 _DTS = defaultdict(lambda: 1.0)
 _DTS['temporal'] = 0.5
-def single_heatmap(model, hist, bins=(540, 31), norm=None, ax=None, cbar=False):
+def single_heatmap(model, hist, bins=(540, 31), cutoff=None, norm=None, ax=None, cbar=False):
     if ax is None:
         fig, ax = plt.subplots()
     
@@ -443,11 +524,18 @@ def single_heatmap(model, hist, bins=(540, 31), norm=None, ax=None, cbar=False):
     
     dt = _DTS[model]
     ts = (np.arange(hist.shape[1]) * dt).reshape((1, -1))
-    ts_arr = np.repeat(ts, hist.shape[0], axis=0)
+    ts_arr = np.repeat(ts, hist.shape[0], axis=0).flatten()
+
+    if cutoff is not None:
+      ts_mask = ts_arr < cutoff
+      ts_arr = ts_arr[ts_mask]
+      hist_arr = hist.flatten()[ts_mask]
+    else:
+      hist_arr = hist.flatten()
 
     *_, coll = ax.hist2d(
-        ts_arr.flatten(), 
-        30 - hist.flatten(),
+        ts_arr, 
+        30 - hist_arr,
         bins=bins,
         density=True,
         norm=norm,
@@ -464,23 +552,26 @@ _ax_order = {
     'static': 2,
     'naive_static': 3,
 }
-def final_heatmap(hists, norm=mcolors.PowerNorm(0.5)):
+def final_heatmap(hists, norm=mcolors.PowerNorm(0.5), bins=(540, 31), cutoff=None):
 
     fig, axs = plt.subplots(nrows=4, figsize=[8.25, 5.25], sharex=True)
     axs_flat = axs.flatten()
     for k, h in hists.items():
         ax = axs_flat[_ax_order[k]]
-        coll, _ = single_heatmap(k, h, norm=norm, ax=ax)
+        coll, _ = single_heatmap(k, h, bins=bins, cutoff=cutoff, norm=norm, ax=ax)
         norm = coll.norm
         ax.set_ylabel(k.replace('_', '\n'))
     set_xdatelabels(h, axs_flat[-1])
     fig.subplots_adjust(hspace=0.3)
-    fig.colorbar(coll, ax=axs, label='Density', extend='max')
+    coll_norm = copy.deepcopy(coll.norm) 
+    coll_norm.autoscale([0.0, bins[0]* coll.norm.vmax])
+    scaled_scalar_map = cm.ScalarMappable(norm=coll_norm, cmap=coll.get_cmap())
+    fig.colorbar(scaled_scalar_map, ax=axs, label='Density', extend='max')
     fig.supylabel("Number at home ($N_0=30$)")
     
     return fig, axs
 
-_ = final_heatmap(histories)
+_ = final_heatmap(histories, norm=mcolors.PowerNorm(0.4), bins=(313,31), cutoff=3*365)
 ```
 
 

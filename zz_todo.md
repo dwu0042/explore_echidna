@@ -303,3 +303,17 @@ and larrgeish and smallish
 [03/06]
 - this package: https://ctan.org/pkg/tikz-network
   - can recreate the manim diagrma we drew, looks nice, haven't seen compat
+
+[06/06]
+- intro needs some more background research: we need to find non-tjibbe papers
+  - Bruce Lee
+  - Piotrowska
+  - (france?)
+    -
+
+
+[12/06] ECHIDNA MEETING
+
+- why not also look at farms (animal outbreak studies)
+  - in the context of hospital-level R0 for static
+

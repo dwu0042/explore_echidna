@@ -1,0 +1,33 @@
+\documentclass[tikz, margin=2mm]{standalone}
+
+\usetikzlibrary{
+    arrows.meta, 
+    positioning, 
+    shapes.geometric, 
+    shapes.arrows,
+    decorations.pathmorphing,
+}
+
+
+\begin{document}
+
+\begin{tikzpicture}
+
+
+    \node at (0.0, 0.0) (NORTHWEST){};
+    \node at (16.0, 10.0) (SOUTHEAST){};
+
+    \node at (4.0, 8.0) [draw,solid,minimum width=1 cm,minimum height=1 cm,inner sep=0](A){$u$};
+    \node at (4.0, 2.0) [draw,solid,minimum width=1 cm,minimum height=1 cm,inner sep=0](B){$v$};
+
+    \node at (12.0, 8.0) [draw,solid,minimum width=1 cm,minimum height=1 cm,inner sep=0](A2){$u$};
+    \node at (12.0, 2.0) [draw,solid,minimum width=1 cm,minimum height=1 cm,inner sep=0](B2){$v$};
+
+    \draw [out=225,in=135,-stealth,solid](A.225)to(B.135);
+    \draw [out=0,in=180,-stealth,densely dashed](B.0)to(A2.180);
+
+    \draw [loosely dashed,very thick](8.0, 0.0)--(8.0, 10.0);
+
+\end{tikzpicture}
+
+\end{document}
