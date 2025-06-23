@@ -140,12 +140,10 @@ Australia has an endemic strain of CPE -- IMP4 -- but this is at a relatively lo
 This already causes some level of burden, and introduced strains would further multiply this.
 
 The spread of AMR in these systems has been studied by modelling the hospital system as a network or interconnected healthcare facilities. For example, [@donker_patient_2010] examines hospitals in the Netherlands to study the spread of MRSA, followed by a similar analysis of the UK hospital system in [@donker_hospital_2012]. 
-Ultimately, the aim of studying these systems as networks is leveraging the network framework when designing surveillance and control protocols for emerging and recurring AMR outbreaks. This has been analysed to some extent in [@ciccolini_efficient_2014], for example; but such analyses use 
+Ultimately, the aim of studying these systems as networks is leveraging the network framework when designing surveillance and control protocols for emerging and recurring AMR outbreaks. This has been analysed to some extent in [@ciccolini_efficient_2014, @++needmore], but these studies neglect the temporal structure of the healthcare system, through the use of assumptions such as patients will be disease-free when they are discharged. 
 
-
-There are existing results that show that accounting for temporality in network models results in lower control costs [@li_fundamental_2017]. In the public health space, a lot of attention has been spent on patient-staff and staff-staff contacts within a hospital, for example in [@barnes_dynamic_2010; @martinet_link_2018].
-
-Perhaps most pertinently, [@belik_leveraging_2017] explores patient referral networks using a temporal network methodology, and also consider the effect of community stays by augmenting their temporal network with additional edges corresponding to readmissions that occur within a period of $k$ days (representative of the infectious period). Here, we will show that 
+The temporal structure of the healthcare systems can be considered by using temporal network models. There are existing results that show that control costs are lower in temporal networks[@li_fundamental_2017]. In the public health space, a lot of attention has been spent on patient-staff and staff-staff contacts within a hospital, for example in [@barnes_dynamic_2010; @martinet_link_2018].
+Perhaps most pertinently, [@belik_leveraging_2017] explores patient referral networks using a temporal network methodology, and also consider the effect of community stays by augmenting their temporal network with additional edges corresponding to readmissions that occur within a period of $k$ days (representative of the infectious period).  
 
 
 # Methods
@@ -364,7 +362,7 @@ $$\rho_{uv}(s,t) = \frac{1}{\lceil{}t\rceil{}_\omega - t}$$
 
 ## Simulation Study
 
-Since analytical results are intractable for the more complex network models, we resort to simulation as a statistical proxy.
+Since analytical results are intractable for our more complex network models, we resort to simulation as a statistical proxy.
 Movements of marked individuals are tracked for each network type, when they are seeded at each facility in the network at $t=0$. The hitting time $k_j$ to each other healthcare facililty is recorded.
 We mark $N_0 = 30$ individuals at the start of each realisation; we generate $N_r=20$ realisations for each seed facility.
 

@@ -317,3 +317,22 @@ and larrgeish and smallish
 - why not also look at farms (animal outbreak studies)
   - in the context of hospital-level R0 for static
 
+[23/06]
+
+Thinking a bit about the applicability of these results to "epidemics".
+We are getting results about the Q matrix of the movement matrix.
+We can augment this in a system where:
+- S' = -bSI - QS + aI
+- I' = bSI - QI - aI
+
+where bSI and aI are diagonal. 
+
+Some linear algebra later, we can maybe get some info, but we need that <a> is const over all locs
+And I'm not sure if we can get any info about the block...
+
+using FV, NGM:
+
+F = ..?
+V = ..?
+
+- need to check in office with Math Epi ref.
