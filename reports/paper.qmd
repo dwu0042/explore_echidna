@@ -151,15 +151,67 @@ Perhaps most pertinently, [@belik_leveraging_2017] explores patient referral net
 We use admissions data sourced from the Victorian Admitted Episdoes Dataset (VAED) [@VAED_official]. This contains line-listed admissions for patients in Victoria, Australia, covering 338 healthcare facilities that vary in size, case mix and services.
 the dataset contains 26,796,407 individual admissions across 5,471893 unique patients, from 1 January 2011 through to 6 December 2019 (3631 days).
 Because there is no unique healthcare identifier in Victoria, Australia, linkage is performed on the VAED dataset by the Centre for Victorian Data Linkage, in order to build information on succesive admissions of patients. As a result of this linkage and hospital administrative procedures, there can be overlapping admissions, where a patient admits at a facility before being discharged at a prior facility. These overlaps are removed by constructing new admissions that are of minimal non-overlapping duration.
-Some exploratory analysis of this data was done in [@lydeamore_carbapenemase-producing_2024] using a static network framework.
+Some exploratory analysis of this data was done in [@lydeamore_carbapenemase-producing_2024] using a static network framework, and it characterises the structure of the healthcare system.
 
 
 ## Data Characterisation
 
-To motivate the following methods, we first characterise temporal trends in the data.
+The temporal characterisation of the Victorian healthcare system is less well-explored.
+For example, the amount of patient movement in the system fluctuates temporally, as shown in @fig-movement-over-time. 
+There is an increasing amount of transfers over time, and there are dips in transfers related to public holidays in the state of Victoria. This implies that we should have at least an inhomogenous Poisson process governing the rate of transfers between facilites over time. 
 
-Firstly, we examine the duration of stays 
+```{python}
+#| label: compute-movement-over-time
+base_date = datetime.date(2011, 1, 1)
+aggregated_movement = pl.read_csv(root / "data/concordant_networks/analyses/movement_aggregated.csv")
+aggregated_movement = (
+  aggregated_movement
+  .group_by('t')
+  .agg(pl.col('w').sum())
+  .sort('t')
+  .with_columns(
+    date=pl.lit(base_date) + pl.duration(days=pl.col('t')),
+    my=pl.col('w').rolling_mean(window_size=365, center=True), # yearly ma
+    mw=pl.col('w').rolling_mean(window_size=7, center=True), # weekly ma
+    mm=pl.col('w').rolling_mean(window_size=28, center=True), # monthly ma
+  )
+)
+```
 
+```{python}
+#| label: fig-movement-over-time
+#| fig-cap: Number of patient transfers throughout the network increases over time. Moving averages plotted in red with periods of 1 year (main plot) and 1 week (inset). Right-hand end of data exhibits censoring behaviour, since we do not see long-terms readmissions beyond the end of the data observation period. We also observe seasonal behaviour (most visually obvious with periods of a year and a week), and consistent decreases of transfers during public holiday periods, especially at the end of the year.
+fig = plt.figure()
+ax = fig.add_subplot()
+sns.despine(ax=ax)
+
+nth_year = 4
+x1, x2 = datetime.date(2011+nth_year-1, 12, 15), datetime.date(2011+nth_year+1, 1, 15)
+y1, y2 = 12_000, 25_000
+inset = ax.inset_axes(
+  [0.15, 0.1, 0.7, 0.35], 
+  xlim=(x1, x2), 
+  ylim=(y1, y2),
+  xlabel='',
+  ylabel='',
+  yticks=[],
+  yticklabels=[],
+)
+for axes in (ax, inset):
+  sns.lineplot(aggregated_movement, x='date', y='w', color='C0', ax=axes)
+
+sns.lineplot(aggregated_movement, x='date', y='my', color='red', ax=ax)
+sns.lineplot(aggregated_movement, x='date', y='mw', color='red', ax=inset)
+
+ax.indicate_inset_zoom(inset, edgecolor='black')
+
+inset.set_xlabel('')
+inset.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+_ = ax.set_xlabel('Date')
+_ = ax.set_ylabel('Number of patient transfers')
+```
+
+The underlying admission duration is ___ distributed (see @fig-stay-duration), and the time between admissions (i.e. the transfer period) is power-law distributed (see @fig-readmission-time). Thus, a fully Markovian POisson process on a static network is unlikely to be a good representation of the movement in the network.
 
 ```{python}
 #| label: fig-stay-duration
@@ -170,9 +222,6 @@ stay_dur_df = pl.read_csv(root / "data/export/stay_duration_hist.csv")
 fig, ax = plt.subplots()
 sns.scatterplot(stay_dur_df, x='duration', y='count')
 ```
-
-In this paper, we investigate these differences using the Victorian hospital system as a baseline for comparison. Qualitatively, there are mechanisms implicit in the data that are not previously well-modelled, and may be of importance to constructing robust control measures. Critically, we notice that the distribution of readmission times (the time from a discharge of a given patient from a facility to next admission of that patient at any facility), as plotted in @fig-readmission-time, are not well modelled by an exponential distribution, i.e. poorly approximated by Markov processes.
-
 
 ```{python}
 #| label: fig-readmission-time
@@ -216,6 +265,8 @@ ax.set_xticks([0, 1, 10, 100])
 
 ax.legend()
 ```
+
+## Network Models
 
 A weighted, directed network can be used to construct a Markov chain that in turn can be analysed or simulated to understand the dynamics of a spreading infectious disease.
 For each edge $e_{ij}$ with a number of observed movements $w_{ij}$ over some time period $\tau$, 
@@ -286,56 +337,6 @@ Here, we model the rate of indirect transfers $\eta$ similarly to the rate of di
 Of course, as the hospital system changes over time, the rate of patient transfers, and thus the hazards represented in our model should also change.
 We see evidence of this in @fig-movement-over-time where we plot the overall rates of movement in the network over time.
 
-```{python}
-#| label: compute-movement-over-time
-base_date = datetime.date(2011, 1, 1)
-aggregated_movement = pl.read_csv(root / "data/concordant_networks/analyses/movement_aggregated.csv")
-aggregated_movement = (
-  aggregated_movement
-  .group_by('t')
-  .agg(pl.col('w').sum())
-  .sort('t')
-  .with_columns(
-    date=pl.lit(base_date) + pl.duration(days=pl.col('t')),
-    my=pl.col('w').rolling_mean(window_size=365, center=True), # yearly ma
-    mw=pl.col('w').rolling_mean(window_size=7, center=True), # weekly ma
-    mm=pl.col('w').rolling_mean(window_size=28, center=True), # monthly ma
-  )
-)
-```
-
-```{python}
-#| label: fig-movement-over-time
-#| fig-cap: Number of patient transfers throughout the network increases over time. Moving averages plotted in red with periods of 1 year (main plot) and 1 week (inset). Right-hand end of data exhibits censoring behaviour, since we do not see long-terms readmissions beyond the end of the data observation period. We also observe seasonal behaviour (most visually obvious with periods of a year and a week), and consistent decreases of transfers during public holiday periods, especially at the end of the year.
-fig = plt.figure()
-ax = fig.add_subplot()
-sns.despine(ax=ax)
-
-nth_year = 4
-x1, x2 = datetime.date(2011+nth_year-1, 12, 15), datetime.date(2011+nth_year+1, 1, 15)
-y1, y2 = 12_000, 25_000
-inset = ax.inset_axes(
-  [0.15, 0.1, 0.7, 0.35], 
-  xlim=(x1, x2), 
-  ylim=(y1, y2),
-  xlabel='',
-  ylabel='',
-  yticks=[],
-  yticklabels=[],
-)
-for axes in (ax, inset):
-  sns.lineplot(aggregated_movement, x='date', y='w', color='C0', ax=axes)
-
-sns.lineplot(aggregated_movement, x='date', y='my', color='red', ax=ax)
-sns.lineplot(aggregated_movement, x='date', y='mw', color='red', ax=inset)
-
-ax.indicate_inset_zoom(inset, edgecolor='black')
-
-inset.set_xlabel('')
-inset.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
-_ = ax.set_xlabel('Date')
-_ = ax.set_ylabel('Number of patient transfers')
-```
 
 We approach this using static network snapshots of the hospital system over time. 
 
