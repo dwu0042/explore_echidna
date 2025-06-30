@@ -336,3 +336,11 @@ F = ..?
 V = ..?
 
 - need to check in office with Math Epi ref.
+
+[24/06]
+
+- Looks like there is another group, loosely assoc with Piotrowska, but perhaps more senior:
+  - Vitaly Belik
+  - Rafael Mikolajczyk
+
+Need to go into CVDL and extract the histogram of stay duration as a csv, then ask for export.

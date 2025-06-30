@@ -8,7 +8,7 @@ format:
     include-in-header:
       text: |
         \usepackage{setspace}
-        \doublespacing
+        %\doublespacing
     keep-tex: true
     fig-format: png
     fig-dpi: 300
@@ -146,18 +146,30 @@ The temporal structure of the healthcare systems can be considered by using temp
 Perhaps most pertinently, [@belik_leveraging_2017] explores patient referral networks using a temporal network methodology, and also consider the effect of community stays by augmenting their temporal network with additional edges corresponding to readmissions that occur within a period of $k$ days (representative of the infectious period).  
 
 
-# Methods
+# Materials and Methods
 
-## Setting 
-
-Victoria, Australia, has a population of 7.0 million people [@ABS_state_populations]. Its hospital system consists of $N_x = 338$ healthcare facilities that vary in size, case mix and services. 
-Admissions data was sourced from the Victorian Admitted Episdoes Dataset (VAED) [@VAED_official].
-In particular, data from 1 January 2011 to 9 December 2020 (3631 days) was used in this study. All Victorian hospital admissions during this study period are included. The total number of admission records is 26876787.
-This data was aggregated into time-discretised temporal networks (described below), and exported from the database; further analysis as presented in this paper is performed on external machines with no access to identifiable protected health information.
-
+We use admissions data sourced from the Victorian Admitted Episdoes Dataset (VAED) [@VAED_official]. This contains line-listed admissions for patients in Victoria, Australia, covering 338 healthcare facilities that vary in size, case mix and services.
+the dataset contains 26,796,407 individual admissions across 5,471893 unique patients, from 1 January 2011 through to 6 December 2019 (3631 days).
+Because there is no unique healthcare identifier in Victoria, Australia, linkage is performed on the VAED dataset by the Centre for Victorian Data Linkage, in order to build information on succesive admissions of patients. As a result of this linkage and hospital administrative procedures, there can be overlapping admissions, where a patient admits at a facility before being discharged at a prior facility. These overlaps are removed by constructing new admissions that are of minimal non-overlapping duration.
 Some exploratory analysis of this data was done in [@lydeamore_carbapenemase-producing_2024] using a static network framework.
 
-## Network models of patient transfers for temporal fidelity
+
+## Data Characterisation
+
+To motivate the following methods, we first characterise temporal trends in the data.
+
+Firstly, we examine the duration of stays 
+
+
+```{python}
+#| label: fig-stay-duration
+#| fig-cap: Distribution of duration of stays
+
+stay_dur_df = pl.read_csv(root / "data/export/stay_duration_hist.csv")
+
+fig, ax = plt.subplots()
+sns.scatterplot(stay_dur_df, x='duration', y='count')
+```
 
 In this paper, we investigate these differences using the Victorian hospital system as a baseline for comparison. Qualitatively, there are mechanisms implicit in the data that are not previously well-modelled, and may be of importance to constructing robust control measures. Critically, we notice that the distribution of readmission times (the time from a discharge of a given patient from a facility to next admission of that patient at any facility), as plotted in @fig-readmission-time, are not well modelled by an exponential distribution, i.e. poorly approximated by Markov processes.
 
