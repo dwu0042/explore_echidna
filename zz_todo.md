@@ -344,3 +344,7 @@ V = ..?
   - Rafael Mikolajczyk
 
 Need to go into CVDL and extract the histogram of stay duration as a csv, then ask for export.
+
+[01/07]
+
+- ML has suggested moving the actual data charaacterisation bit to the results, and just presenting the assumptions in previous lit in the mats and methods. This seems like a good idea.
