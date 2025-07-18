@@ -111,6 +111,7 @@ execute:
 import numpy as np
 from pathlib import Path
 import polars as pl
+from scipy import stats
 from matplotlib import pyplot as plt, dates as mdates, colors as mcolors, cm
 import seaborn as sns
 import calendar
@@ -154,132 +155,21 @@ Because there is no unique healthcare identifier in Victoria, Australia, linkage
 Some exploratory analysis of this data was done in [@lydeamore_carbapenemase-producing_2024] using a static network framework, and it characterises the structure of the healthcare system.
 
 
-## Data Characterisation
-
-The temporal characterisation of the Victorian healthcare system is less well-explored.
-For example, the amount of patient movement in the system fluctuates temporally, as shown in @fig-movement-over-time. 
-There is an increasing amount of transfers over time, and there are dips in transfers related to public holidays in the state of Victoria. This implies that we should have at least an inhomogenous Poisson process governing the rate of transfers between facilites over time. 
-
-```{python}
-#| label: compute-movement-over-time
-base_date = datetime.date(2011, 1, 1)
-aggregated_movement = pl.read_csv(root / "data/concordant_networks/analyses/movement_aggregated.csv")
-aggregated_movement = (
-  aggregated_movement
-  .group_by('t')
-  .agg(pl.col('w').sum())
-  .sort('t')
-  .with_columns(
-    date=pl.lit(base_date) + pl.duration(days=pl.col('t')),
-    my=pl.col('w').rolling_mean(window_size=365, center=True), # yearly ma
-    mw=pl.col('w').rolling_mean(window_size=7, center=True), # weekly ma
-    mm=pl.col('w').rolling_mean(window_size=28, center=True), # monthly ma
-  )
-)
-```
-
-```{python}
-#| label: fig-movement-over-time
-#| fig-cap: Number of patient transfers throughout the network increases over time. Moving averages plotted in red with periods of 1 year (main plot) and 1 week (inset). Right-hand end of data exhibits censoring behaviour, since we do not see long-terms readmissions beyond the end of the data observation period. We also observe seasonal behaviour (most visually obvious with periods of a year and a week), and consistent decreases of transfers during public holiday periods, especially at the end of the year.
-fig = plt.figure()
-ax = fig.add_subplot()
-sns.despine(ax=ax)
-
-nth_year = 4
-x1, x2 = datetime.date(2011+nth_year-1, 12, 15), datetime.date(2011+nth_year+1, 1, 15)
-y1, y2 = 12_000, 25_000
-inset = ax.inset_axes(
-  [0.15, 0.1, 0.7, 0.35], 
-  xlim=(x1, x2), 
-  ylim=(y1, y2),
-  xlabel='',
-  ylabel='',
-  yticks=[],
-  yticklabels=[],
-)
-for axes in (ax, inset):
-  sns.lineplot(aggregated_movement, x='date', y='w', color='C0', ax=axes)
-
-sns.lineplot(aggregated_movement, x='date', y='my', color='red', ax=ax)
-sns.lineplot(aggregated_movement, x='date', y='mw', color='red', ax=inset)
-
-ax.indicate_inset_zoom(inset, edgecolor='black')
-
-inset.set_xlabel('')
-inset.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
-_ = ax.set_xlabel('Date')
-_ = ax.set_ylabel('Number of patient transfers')
-```
-
-The underlying admission duration is ___ distributed (see @fig-stay-duration), and the time between admissions (i.e. the transfer period) is power-law distributed (see @fig-readmission-time). Thus, a fully Markovian POisson process on a static network is unlikely to be a good representation of the movement in the network.
-
-```{python}
-#| label: fig-stay-duration
-#| fig-cap: Distribution of duration of stays
-
-stay_dur_df = pl.read_csv(root / "data/export/stay_duration_hist.csv")
-
-fig, ax = plt.subplots()
-sns.scatterplot(stay_dur_df, x='duration', y='count')
-```
-
-```{python}
-#| label: fig-readmission-time
-#| fig-cap: Distribution of empirical readmission times (time from discharge to next admission), truncated at 365 days; and best-fit exponential (via MLE).
-
-readmission_df = pl.read_parquet(root / "data/concordant_networks/readmission_time.parquet")
-readmission_df = (readmission_df
-  .with_columns(
-    Density = pl.col('count') / pl.col('count').sum()
-  )
-  .rename(
-    {
-      'readmission_time': 'Readmission Time [days]', 
-      'count': 'Count',
-    }
-  )
-)
-
-fig, ax = plt.subplots()
-
-sns.scatterplot(readmission_df, x='Readmission Time [days]', y='Density', ax=ax, label='data')
-sns.despine(ax=ax)
-
-ax.set_xscale('asinh')
-_xlims = ax.set_xlim(-0.1, None)
-ax.set_yscale('log')
-_ylims = ax.get_ylim()
-
-# get best fit exponential, we know that gamma = 1/mean
-readmission_mean = readmission_df.select(
-  pl.col('Readmission Time [days]') * pl.col('Density')
-).sum().item()
-
-gamma = 1. / readmission_mean
-_xgrid = np.arange(0, 366, 1)
-ax.plot(_xgrid, gamma * np.exp(-(_xgrid * gamma)), color='orange', linestyle='dashed', label='best-fit exponential')
-
-ax.set_ylim(*_ylims)
-ax.set_xlim(*_xlims)
-ax.set_xticks([0, 1, 10, 100])
-
-ax.legend()
-```
 
 ## Network Models
 
-A weighted, directed network can be used to construct a Markov chain that in turn can be analysed or simulated to understand the dynamics of a spreading infectious disease.
-For each edge $e_{ij}$ with a number of observed movements $w_{ij}$ over some time period $\tau$, 
-we can construct a reaction that has a hazard function $\lambda_{ij} = w_{ij} / \tau$. This implicitly constructs a process that has inter-event times (i.e. times between distinct patient movements) that are exponentially distributed $\text{Exp}(\lambda_{ij})$.
+This data can be used to inform the construction of a wide variety of (weighted, directed) networks, which can, in turn, be used to construct a stochastic process model. In this study, we will use discrete time Markov chain models, where a state vector $x$ that represents the number of marked individuals at facilities $u$. Weights $w_{ij}$ of the edges $e_{ij}$ between nodes $u_i, u_j$ of the network inform the hazard function of the movement process of marked individuals between those nodes.
+By default, the movement process is a Markovian process, i.e. is a Poisson random variable with hazard $\lambda_{ij}(x_i, t) = c_iw_{ij}x_i\Delta t$, where $c_i$ is a normalising constant, and $\Delta t$ is the time step.
+
+Applying this directly to a static network of transfers between healthcare facilities, with appropriate infection dynamics, is what is done in @donker_hospital_2012, for example, and represents a model where ....
+However, since individuals tend to leave the hospital system for non-negligible amoutns of time, it may be appropriate to include time spent in the community (e.g. at home) as additional nodes of the network. 
+In @belik_leveraging_2017, this approach is taken with a temporal network approach in snapshot representation, where the system over a time period is represented as a series of static networks that "snapshot" the system at discrete points in time. 
+Through examination of the behaviour of transfers, especially those that are indirect and cross-facilitly, we want to expand on this temporal representation, and include edges that explicityl ...
+
+We can capture the This motivates the general representation in @fig-general-diagram, where edges from a location $u$ can go to null (discharged and never seen again), directly to some location $v$ (that could be $u$), or indirectly to $v$ via a community node $h_{uv}$. 
+
 
 ![Sketch of the generalised model with processes of (1) permanent discharge ($u \to \emptyset$), (2) direct transfer ($u \to v$), (3) return home ($u \to h_{uv}$), (4) readmission $h_{uv} \to v$).](diagrams/movement_general_case.pdf){#fig-general-diagram}
-
-Here, $u$ and $v$ are locations (potentially identical locations), $s$ and $t$ are times. We take that $t \geq s$.
-$\emptyset$ represents patients that are not observed to return to the hospital system after their discharge from location $u$. We assume the associated hazard for this process ($\zeta_u(t)$) to be known for all locations $u$ at all times $t$: the modelling of this process is the same for all network models, and will be neglected in the following.
-
-Further, we define the function $w_{uv}(s, t)$ to be the number of individuals that are observed to discharge from $u$ at time $s$ and readmit at time $t$. We allow a maximum of one of the pairs $u,v$ and $s,t$ to be reflexive, i.e. $u=v$ or $s=t$, but not both.
-
-We will also assume that we will have quantities $N_u$ that represent the "size" of a location $u$. We assume that all locations $u$ will have $N_u$ individuals in them at all times, and that the observed mvoements $w_{uv}(s, t)$ can be thought of as being scaled by $N_u$.
 
 The governing equations can be roughly expressed as a function of the hazards of each process.
 
@@ -292,7 +182,9 @@ $$
 \end{aligned}
 $$
 
-We note that as a consequence of the model structure, the hazards can also be interpreted as modelling the hodling time an individual patient spends in each state. 
+We note that as a consequence of the model structure, the hazards can also be interpreted as modelling the holding time an individual patient spends in each state. 
+
+Under this general structure, we can describe four network models that capture different levels of temporal fidelity. 
 
 :::{#fig-specific-model-diagrams layout-ncol=2 layout-nrow=2 layout-valign="bottom"}
 
@@ -372,6 +264,144 @@ $$\rho_{uv}(s,t) = \frac{1}{\lceil{}t\rceil{}_\omega - t}$$
 
 
 # Results
+
+## Data Characterisation
+
+The amount of patient movement in the system fluctuates temporally, as shown in @fig-movement-over-time. 
+There is an increasing amount of transfers over time, and there are dips in transfers related to public holidays in the state of Victoria. This implies that we should have at least an inhomogenous Poisson process governing the rate of transfers between facilites over time. 
+
+```{python}
+#| label: compute-movement-over-time
+base_date = datetime.date(2011, 1, 1)
+aggregated_movement = pl.read_csv(root / "data/concordant_networks/analyses/movement_aggregated.csv")
+aggregated_movement = (
+  aggregated_movement
+  .group_by('t')
+  .agg(pl.col('w').sum())
+  .sort('t')
+  .with_columns(
+    date=pl.lit(base_date) + pl.duration(days=pl.col('t')),
+    my=pl.col('w').rolling_mean(window_size=365, center=True), # yearly ma
+    mw=pl.col('w').rolling_mean(window_size=7, center=True), # weekly ma
+    mm=pl.col('w').rolling_mean(window_size=28, center=True), # monthly ma
+  )
+)
+```
+
+```{python}
+#| label: fig-movement-over-time
+#| fig-cap: Number of patient transfers throughout the network increases over time. Moving averages plotted in red with periods of 1 year (main plot) and 1 week (inset). Right-hand end of data exhibits censoring behaviour, since we do not see long-terms readmissions beyond the end of the data observation period. We also observe seasonal behaviour (most visually obvious with periods of a year and a week), and consistent decreases of transfers during public holiday periods, especially at the end of the year.
+fig = plt.figure()
+ax = fig.add_subplot()
+sns.despine(ax=ax)
+
+nth_year = 4
+x1, x2 = datetime.date(2011+nth_year-1, 12, 15), datetime.date(2011+nth_year+1, 1, 15)
+y1, y2 = 12_000, 25_000
+inset = ax.inset_axes(
+  [0.15, 0.1, 0.7, 0.35], 
+  xlim=(x1, x2), 
+  ylim=(y1, y2),
+  xlabel='',
+  ylabel='',
+  yticks=[],
+  yticklabels=[],
+)
+for axes in (ax, inset):
+  sns.lineplot(aggregated_movement, x='date', y='w', color='C0', ax=axes)
+
+sns.lineplot(aggregated_movement, x='date', y='my', color='red', ax=ax)
+sns.lineplot(aggregated_movement, x='date', y='mw', color='red', ax=inset)
+
+ax.indicate_inset_zoom(inset, edgecolor='black')
+
+inset.set_xlabel('')
+inset.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+_ = ax.set_xlabel('Date')
+_ = ax.set_ylabel('Number of patient transfers')
+```
+
+Binning the length of stay and the time between sequential admissions of the same patient into 1-day bins in @fig-stay-duration and @fig-readmission-time, we can see that both quantities are power-law distributed when aggregated over the entire dataset.
+Thus, a fully Markovian Poisson process on a static network is unlikely to be a good representation of the movement in the network.
+
+```{python}
+def gof_exponential(bin_edges, counts):
+  bin_midpoints = (bin_edges[1:] + bin_edges[:-1]) / 2
+  sample_mean = np.sum(bin_midpoints * counts) / np.sum(counts)
+  lambd = 1./ sample_mean
+
+  cumul_f = np.exp(-lambd * bin_edges)
+  prop_f = -np.diff(cumul_f) * np.sum(counts)
+
+  test_result = stats.chisquare(
+    f_obs=counts,
+    f_exp=prop_f,
+    ddof=len(counts) - 2,
+  )
+
+  return test_result, lambd
+  
+```
+
+```{python}
+#| label: fig-stay-duration
+#| fig-cap: Distribution of length of stays, rounded up to the nearest day.
+
+stay_dur_df = pl.read_csv(root / "data/export/length_of_stay_binned.csv")
+
+fig, ax = plt.subplots()
+sns.scatterplot(stay_dur_df, x='bin_edge_right', y='count', ax=ax)
+ax.set_xlabel('Length of Stay [days]')
+ax.set_ylabel('Count')
+ax.set_xscale('log')
+ax.set_yscale('log')
+
+sns.despine(ax=ax)
+```
+
+```{python}
+#| label: fig-readmission-time
+#| fig-cap: Distribution of empirical readmission times (time from discharge to next admission), truncated at 365 days; and best-fit exponential (via MLE).
+
+readmission_df = pl.read_parquet(root / "data/concordant_networks/readmission_time.parquet")
+readmission_df = (readmission_df
+  .with_columns(
+    Density = pl.col('count') / pl.col('count').sum()
+  )
+  .rename(
+    {
+      'readmission_time': 'Readmission Time [days]', 
+      'count': 'Count',
+    }
+  )
+)
+
+fig, ax = plt.subplots()
+
+sns.scatterplot(readmission_df, x='Readmission Time [days]', y='Density', ax=ax, label='data')
+sns.despine(ax=ax)
+
+ax.set_xscale('asinh')
+_xlims = ax.set_xlim(-0.1, None)
+ax.set_yscale('log')
+_ylims = ax.get_ylim()
+
+# get best fit exponential, we know that gamma = 1/mean
+readmission_mean = readmission_df.select(
+  pl.col('Readmission Time [days]') * pl.col('Density')
+).sum().item()
+
+gamma = 1. / readmission_mean
+_xgrid = np.arange(0, 366, 1)
+ax.plot(_xgrid, gamma * np.exp(-(_xgrid * gamma)), color='orange', linestyle='dashed', label='best-fit exponential')
+
+ax.set_ylim(*_ylims)
+ax.set_xlim(*_xlims)
+ax.set_xticks([0, 1, 10, 100])
+
+ax.legend()
+```
+
 
 ## Simulation Study
 
@@ -682,6 +712,8 @@ Verification of the empirical simulation results against analytical results. We 
 :::
 
 ## Uniform dissapation of at-home individuals
+
+The only process that does not have exponential waiting times is the dissapation of indivdiuals at home in the fulyl tremporal network model waiting to release into the appropriate location during their specified time bin. We need a waiting time distribution that has finite support, since all indivdiuals will return to hospital within the givne timeframe; an exponential waiting time does not have this property. We choose the uniform distribution as the most parisomonious distriubtion given the circumstance.
 
 We know that for a random variable $t$ uniformly distributed between $[\tau, \tau+\omega]$, the pdf and survival functions are, respectively:
 

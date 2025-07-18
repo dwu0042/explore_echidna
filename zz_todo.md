@@ -348,3 +348,16 @@ Need to go into CVDL and extract the histogram of stay duration as a csv, then a
 [01/07]
 
 - ML has suggested moving the actual data charaacterisation bit to the results, and just presenting the assumptions in previous lit in the mats and methods. This seems like a good idea.
+
+[8/07]
+
+- Need to think of proper and good ways of generating a goodness of fit test for the PMFs that we have (binned histograms). prob a chi2, 
+- I want to think about how to best do this test per-facility once we have pulled los from the VM. I think we can't so prob have to do inside VM, which reqquries a groupby regression. -- 74895640 -- SO provides a solution.
+- mvoed some things around in pap, feels better, need to clean methods section, maybethink about how to incorp fig sproperly.
+- I want to make a comment about the simulation time. I thikn this is present int he sim ids of the temporal and snapshot, but they are in different formats.
+  - looked into, and it looks like we only recorded up to seconds detail, we needed more detail. temporal is 1-2s, snapshiot is 2-4 s.
+
+
+[18/07]
+
+- catastrophic acnecllation for chi2 test when CDF gets very small in expon.
