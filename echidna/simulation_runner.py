@@ -1,10 +1,33 @@
+from collections import namedtuple
 import numpy as np
+import datetime
 
 from . import network_conversion as conv
 from . import network_simulation as simm
 
 from os import PathLike
 from typing import Mapping, Self, SupportsFloat, SupportsInt
+
+# namedtuples can be parsed by hdf5 into an array
+Timestamp = namedtuple("Timestamp", ['year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond'])
+
+def get_timestamp() -> Timestamp:
+
+    tnow = datetime.datetime.now()
+    return Timestamp(
+        tnow.year, tnow.month, tnow.day, tnow.hour, tnow.minute, tnow.second, tnow.microsecond
+    )
+
+def coerce_datetime(timestamp: Timestamp) -> datetime.datetime:
+    return datetime.datetime(
+        year=timestamp.year,
+        month=timestamp.month,
+        day=timestamp.day,
+        hour=timestamp.hour,
+        minute=timestamp.minute,
+        second=timestamp.second,
+        microsecond=timestamp.microsecond,
+    )
 
 class Runner():
 
@@ -52,6 +75,9 @@ class Runner():
         self.prob_final_file = prob_final_file
         self.output_file = output_file
         self.beta = beta
+
+        self.converter: conv.Converter 
+        self.sim: simm.Simulation 
 
         if converter_args is None: converter_args = dict()
         self._create_parameter_converter(**converter_args)
@@ -132,13 +158,16 @@ class Runner():
         self.sim.simulate(until=until, nostop=nostop)
 
 
-    def export(self, to=None, identity=None, with_movers=False, **kwargs):
+    def export(self, to=None, identity=None, with_movers=False, with_timestamp=True, **kwargs):
 
         if to is None:
             to = self.output_file
         
         if identity is None:
             identity = self._export_identity()
+
+        if with_timestamp:
+            kwargs['timestamp'] = get_timestamp()
 
         self.sim.export_history(to, identity=identity, with_movers=with_movers, **kwargs)
 
@@ -147,6 +176,6 @@ class Runner():
         
         iden = ""
         if hasattr(self.sim, 'rng'):
-            iden = self.sim.rng.state['state']['state']
+            iden = self.sim.rng.bit_generator.state['state']['state']
         
         return iden
