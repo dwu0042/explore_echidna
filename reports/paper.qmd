@@ -111,7 +111,7 @@ execute:
 import numpy as np
 from pathlib import Path
 import polars as pl
-from scipy import stats
+from scipy import stats, special, signal, optimize
 from matplotlib import pyplot as plt, dates as mdates, colors as mcolors, cm
 import seaborn as sns
 import calendar
@@ -324,23 +324,44 @@ _ = ax.set_ylabel('Number of patient transfers')
 Binning the length of stay and the time between sequential admissions of the same patient into 1-day bins in @fig-stay-duration and @fig-readmission-time, we can see that both quantities are power-law distributed when aggregated over the entire dataset.
 Thus, a fully Markovian Poisson process on a static network is unlikely to be a good representation of the movement in the network.
 
+
 ```{python}
-def gof_exponential(bin_edges, counts):
-  bin_midpoints = (bin_edges[1:] + bin_edges[:-1]) / 2
-  sample_mean = np.sum(bin_midpoints * counts) / np.sum(counts)
-  lambd = 1./ sample_mean
-
-  cumul_f = np.exp(-lambd * bin_edges)
-  prop_f = -np.diff(cumul_f) * np.sum(counts)
-
-  test_result = stats.chisquare(
-    f_obs=counts,
-    f_exp=prop_f,
-    ddof=len(counts) - 2,
-  )
-
-  return test_result, lambd
+# power law fitting utils
+def pull_xfx(df, make_midpoint=True, left="bin_edge_right", right="bin_edge_right", quantity='bin_midpoint', count="count"):
+  if make_midpoint:
+    xfx_df = df.with_columns(bin_midpoint=(pl.col(left)+pl.col(right))/2)
+  else:
+    xfx_df = df
+  x_arr = xfx_df.select(quantity).to_series().to_numpy()
+  y_arr = xfx_df.select(count).to_series().to_numpy()
+  return x_arr, y_arr
   
+def estimate_alpha(x, fx, xmin, discr_corr=0.5):
+  mask = x > xmin
+  relative_x = np.log(x[mask] / (xmin-discr_corr))
+  sum_relx = fx[mask] * relative_x
+  return 1 + np.sum(fx[mask]) / np.sum(sum_relx)
+
+def scaled_N(x, fx, xmin):
+  mask = x > xmin
+  return np.sum(fx[mask])
+
+def power_law_density_fn(xs, alpha, xmin, N=1):
+  return N * (xs ** (-alpha) / special.zeta(alpha, xmin))
+
+# expon fitting utils
+def estimate_gamma(x, fx):
+  mean_val = np.sum(x*fx) / np.sum(fx)
+  return 1./ mean_val
+
+def expon_density_fn(xs, gamma, N=1):
+  return N * gamma * np.exp(-gamma * xs)
+
+# power law graphical method
+def power_law_fit_graphical(x, fx, xmin):
+  mask = (fx > 0) & (x > xmin)
+  coefs = stats.linregress(np.log(x[mask]), np.log(fx[mask]))
+  return coefs.slope, np.exp(coefs.intercept)
 ```
 
 ```{python}
@@ -349,8 +370,13 @@ def gof_exponential(bin_edges, counts):
 
 stay_dur_df = pl.read_csv(root / "data/export/length_of_stay_binned.csv")
 
+stay_dur_xfx = pull_xfx(stay_dur_df)
+stay_dur_expon_gamma = estimate_gamma(*stay_dur_xfx)
+stay_dur_pow_alpha = estimate_alpha(*stay_dur_xfx, xmin=40)
+
+
 fig, ax = plt.subplots()
-sns.scatterplot(stay_dur_df, x='bin_edge_right', y='count', ax=ax)
+sns.scatterplot(stay_dur_df, x='bin_edge_right', y='count', linewidth=0, ax=ax)
 ax.set_xlabel('Length of Stay [days]')
 ax.set_ylabel('Count')
 ax.set_xscale('log')
@@ -734,3 +760,109 @@ This hazard function can be simulated approximately in our DTMC framework by tak
 
 $$dN(t) \sim \text{Binomial}(n(t), dt\lambda(t)).$$
 
+## Fitting power-law distributions for binned data
+
+Due to the underlying data being identiiable health information, we extract binned data for analysing the distributions of patient admission durations and inter-admission duration. We also right truncate the inter-admission duration [check]
+
+For the distribution of patient stay durations, we use the method from @clauset_power-law_2009, where the probability distribution function is given by
+
+$$
+f(x) = \frac{\alpha - 1}{x_{\textrm{min}}} \left(\frac{x}{x_{\textrm{min}}\right)^\alpha,
+$$
+
+where $\alpha and x_{\textrm{min}}$ are distributional parameters. For a given $x_\textrm{min}$, the MLE for $\alpha$ is recovered as
+
+$$
+\hat{\alpha}(x_\text{min}) = 1 + n \left[\sum_{i=1}^{n} \log\left(\frac{x_i}{x_\textrm{min}}\right) \right].
+$$
+
+$x_\text{min}$ is estimated by a grid search, and looking the region where the corresponding $\hat{\alpha}\text{s}$ are stable.
+
+```{python}
+#| label: fig-stay-dur-xmin-gridsearch
+#| fig-cap: Stay duration grid search 
+stay_dur_df = pl.read_csv(root / "data/export/length_of_stay_binned.csv")
+
+stay_dur_xfx = pull_xfx(stay_dur_df)
+
+xmin_arr = np.arange(1, 400)
+alpha_hats = [estimate_alpha(*stay_dur_xfx, xmin=xmin) for xmin in xmin_arr]
+Ncounts = [scaled_N(*stay_dur_xfx, xmin=xmin) for xmin in xmin_arr]
+
+fig, axs = plt.subplots(ncols=2, figsize=(10, 4))
+axz = axs.flatten()
+
+axz[1].loglog(xmin_arr, alpha_hats)
+axz[1].set_xlabel(r'$x_\text{min}$')
+axz[1].set_ylabel(r'$\hat\alpha$')
+
+axz[0].scatter(*stay_dur_xfx, alpha=0.3, color='k', zorder=999)
+axz[0].set_xscale('log')
+axz[0].set_yscale('log')
+axz[0].set_xlabel('Stay Duration [Days]')
+axz[0].set_ylabel('Count')
+ylim_ = axz[0].get_ylim()
+
+xgrid = np.linspace(0.5, 2500, 10_000)
+xgrid_norm = mcolors.Normalize(vmin=min(xmin_arr), vmax=max(xmin_arr))
+xgrid_clrs = cm.ScalarMappable(cmap=cm.YlOrRd, norm=xgrid_norm)
+for xmin, alpha, NN in zip(xmin_arr, alpha_hats, Ncounts):
+  axz[0].plot(
+    xgrid, 
+    power_law_density_fn(xgrid, alpha, xmin, N=NN),
+    lw=0.75,
+    color=xgrid_clrs.to_rgba(xmin),
+  )
+axz[0].set_ylim(ylim_)
+fig.colorbar(xgrid_clrs, ax=axz[0])
+```
+
+For readmission, preliminary linear regression on log-log shows that we have $\alpha < 1$, so we cannot use the result from @clauset_power-law_2009. 
+```{python}
+#| label: fig-readmit-gridsearch 
+#| fig-cap: Readmission time grid search 
+readmit_df = pl.read_parquet(root / "data/concordant_networks/readmission_time.parquet")
+
+readmit_xfx = pull_xfx(readmit_df, make_midpoint=False, quantity='readmission_time')
+
+r_xmin_arr = np.arange(1, 200)
+power_law_fits = [power_law_fit_graphical(*readmit_xfx, xmin=xm) for xm in r_xmin_arr]
+pl_alphas, pl_icpts = zip(*power_law_fits)
+
+fig, axs = plt.subplot_mosaic(
+  [
+    ['datafit', 'alpha'], 
+    ['datafit', 'coeficpt'],
+  ], 
+  figsize=[10, 4],
+)
+
+
+axs['alpha'].plot(r_xmin_arr, pl_alphas)
+# axs['alpha'].set_xlabel(r'$x_\text{min}$')
+axs['alpha'].set_ylabel(r'$\hat\alpha$')
+
+axs['coeficpt'].plot(r_xmin_arr, pl_icpts)
+axs['coeficpt'].set_xlabel(r'$x_\text{min}$')
+axs['coeficpt'].set_ylabel(r'$\hat{c}$')
+
+axs['datafit'].scatter(*readmit_xfx, alpha=0.3, color='k', zorder=997)
+axs['datafit'].set_xscale('log')
+axs['datafit'].set_yscale('log')
+axs['datafit'].set_xlabel('Readmission Duration [Days]')
+axs['datafit'].set_ylabel('Count')
+ylim_ = axs['datafit'].get_ylim()
+
+r_xgrid = np.linspace(0.5, 370, 10_000)
+r_xmin_norm = mcolors.Normalize(vmin=min(r_xmin_arr), vmax=max(r_xmin_arr))
+r_xmin_clrs = cm.ScalarMappable(cmap=cm.YlOrRd, norm=r_xmin_norm)
+for xmin, (alpha, icpt) in zip(r_xmin_arr, power_law_fits):
+  axs['datafit'].plot(
+    r_xgrid, 
+    icpt * r_xgrid ** alpha,
+    lw=0.75,
+    color=r_xmin_clrs.to_rgba(xmin),
+  )
+axs['datafit'].set_ylim(ylim_)
+fig.colorbar(r_xmin_clrs, ax=axs['datafit'])
+```

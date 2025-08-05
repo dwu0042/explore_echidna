@@ -361,3 +361,8 @@ Need to go into CVDL and extract the histogram of stay duration as a csv, then a
 [18/07]
 
 - catastrophic acnecllation for chi2 test when CDF gets very small in expon.
+
+
+[22/07]
+
+- doe the los being pow-law dist mean that we dont get poiss dist depatures from a fcaility.
