@@ -12,6 +12,7 @@ format:
     keep-tex: true
     fig-format: png
     fig-dpi: 300
+    cite-method: citeproc
 author:
   - name: Michael J Lydeamore
     affiliations:
@@ -132,33 +133,33 @@ sns.set_theme(
 
 # Introduction
 
-Antimicrobial resistance poses a great threat to human health and development. [@murray_global_2022]
+Antimicrobial resistance (AMR) poses a great threat to human health and development. [@murray_global_2022]
 Globally, it poses a large burden, operationally and economically, on hospital systems.
-In Australia, we see [significant] economic burden from AMR.
-this impact could become more significant if we had incursion and subsequent establishment of new [strains] of AMR. 
-One X of interest, for example, is carbapenemase-producing enterobacteriacea (CPE). 
-Australia has an endemic strain of CPE -- IMP4 -- but this is at a relatively low level. 
-This already causes some level of burden, and introduced strains would further multiply this.
+In Australia, the impact of AMR, including its economic and healthcare burden on the population, has only recently been analysed in detail [@wozniak_health_2019, @wozniak_disease_2022].
+This highlights a gap in the understanding of how AMR may proliferate through the healthcare system in Australia.
+One pathogen of interest, especially in the state of Victoria, is carbapenemase-producing enterobacteriacea (CPE), which is detected throughout the state, and reported through various channels to the Department of Health surveillance report. [@needref] Genomic analysis of the data indicates that suspected local acquisition is dominated by a particular gene (?), and it is of interest that its spread through the healthcare system, both actual and potential, be understood beyond reactive monitoring. [@vicorian_guideline_on_cpo_for_health_services]
 
-The spread of AMR in these systems has been studied by modelling the hospital system as a network or interconnected healthcare facilities. For example, [@donker_patient_2010] examines hospitals in the Netherlands to study the spread of MRSA, followed by a similar analysis of the UK hospital system in [@donker_hospital_2012]. 
-Ultimately, the aim of studying these systems as networks is leveraging the network framework when designing surveillance and control protocols for emerging and recurring AMR outbreaks. This has been analysed to some extent in [@ciccolini_efficient_2014, @++needmore], but these studies neglect the temporal structure of the healthcare system, through the use of assumptions such as patients will be disease-free when they are discharged. 
+The spread of AMR in healthcare systems has been studied by modelling the hospital system as a network or interconnected healthcare facilities. For example, [@donker_patient_2010] examines hospitals in the Netherlands to study the spread of MRSA, followed by a similar analysis of the UK hospital system in [@donker_hospital_2012]. 
+Ultimately, the analysis of these systems as networks is leveraged when designing surveillance and control protocols for emerging and recurring AMR outbreaks. This has been done to some extent in [@ciccolini_efficient_2014, @++needmore], but these studies neglect the temporal structure of the healthcare system, through the use of assumptions such as patients will be disease-free when they are discharged. 
 
 The temporal structure of the healthcare systems can be considered by using temporal network models. There are existing results that show that control costs are lower in temporal networks[@li_fundamental_2017]. In the public health space, a lot of attention has been spent on patient-staff and staff-staff contacts within a hospital, for example in [@barnes_dynamic_2010; @martinet_link_2018].
 Perhaps most pertinently, [@belik_leveraging_2017] explores patient referral networks using a temporal network methodology, and also consider the effect of community stays by augmenting their temporal network with additional edges corresponding to readmissions that occur within a period of $k$ days (representative of the infectious period).  
 
+In this study, we will use the Victorian healthcare system as a case study to further investigate the effects of different levels of temporal fidelity on potential models of AMR spread. To remove confounding factors, we will primarily focus on movement of individuals as carriers of AMR, and neglect the disease transmission component of the analysis.
 
 # Materials and Methods
 
 We use admissions data sourced from the Victorian Admitted Episdoes Dataset (VAED) [@VAED_official]. This contains line-listed admissions for patients in Victoria, Australia, covering 338 healthcare facilities that vary in size, case mix and services.
 the dataset contains 26,796,407 individual admissions across 5,471893 unique patients, from 1 January 2011 through to 6 December 2019 (3631 days).
-Because there is no unique healthcare identifier in Victoria, Australia, linkage is performed on the VAED dataset by the Centre for Victorian Data Linkage, in order to build information on succesive admissions of patients. As a result of this linkage and hospital administrative procedures, there can be overlapping admissions, where a patient admits at a facility before being discharged at a prior facility. These overlaps are removed by constructing new admissions that are of minimal non-overlapping duration.
+Overlapping admissions for a patient are resolved by deferring to the patient's most recent admission event, and the method is described in detail in the Appendix, and is used in [@donker_patient_2010,@nekkab_assessing_2020]. 
+
+
+
 Some exploratory analysis of this data was done in [@lydeamore_carbapenemase-producing_2024] using a static network framework, and it characterises the structure of the healthcare system.
 
+<!--# Model description starts here -->
 
-
-## Network Models
-
-This data can be used to inform the construction of a wide variety of (weighted, directed) networks, which can, in turn, be used to construct a stochastic process model. In this study, we will use discrete time Markov chain models, where a state vector $x$ that represents the number of marked individuals at facilities $u$. Weights $w_{ij}$ of the edges $e_{ij}$ between nodes $u_i, u_j$ of the network inform the hazard function of the movement process of marked individuals between those nodes.
+Admissions data can be used to inform the construction of a wide variety of (weighted, directed) networks, which can, in turn, be used to construct a stochastic process model. In this study, we use discrete time Markov chain models, where a state vector $x$ that represents the number of marked individuals at facilities $u$. Weights $w_{ij}$ of the edges $e_{ij}$ between nodes $u_i, u_j$ of the network inform the hazard function of the movement process of marked individuals between those nodes.
 By default, the movement process is a Markovian process, i.e. is a Poisson random variable with hazard $\lambda_{ij}(x_i, t) = c_iw_{ij}x_i\Delta t$, where $c_i$ is a normalising constant, and $\Delta t$ is the time step.
 
 Applying this directly to a static network of transfers between healthcare facilities, with appropriate infection dynamics, is what is done in @donker_hospital_2012, for example, and represents a model where ....
@@ -171,7 +172,7 @@ We can capture the This motivates the general representation in @fig-general-dia
 
 ![Sketch of the generalised model with processes of (1) permanent discharge ($u \to \emptyset$), (2) direct transfer ($u \to v$), (3) return home ($u \to h_{uv}$), (4) readmission $h_{uv} \to v$).](diagrams/movement_general_case.pdf){#fig-general-diagram}
 
-The governing equations can be roughly expressed as a function of the hazards of each process.
+The governing equations for such models can be captured by sets of transitions modelled as a Markov chain. The hazards of the transition events is given in @eq-general-model-transitions.
 
 $$
 \begin{aligned}
@@ -180,9 +181,11 @@ $$
 \lambda(u(s) \to z_{uv}(s, t)) &= \eta_{uv}(s, t)\\
 \lambda(z_{uv}(s, t) \to v(t)) &= \rho_{uv}(s, t)
 \end{aligned}
-$$
+$$ {#eq-general-model-transitions}
 
-We note that as a consequence of the model structure, the hazards can also be interpreted as modelling the holding time an individual patient spends in each state. 
+In order in increase the flexibility of the models, we will use a _discrete time_ Markov chain, where we have a Poisson-distributed number of transition events occur within some given timestep. For some models, we will also allow for the number of transitions for a particular class of event to be non-Poisson.
+
+<!--# Model abstraction ends here, model details start here -->
 
 Under this general structure, we can describe four network models that capture different levels of temporal fidelity. 
 
@@ -209,7 +212,7 @@ $$ d_{uv}(s,t) = d_{uv} = \frac{\sum_{s,t} w_{uv}(s,t)}{T_\Sigma N_u} $$
 $$ \eta_{uv}(s,t) = \eta_{uv} = 0 $$
 $$ \rho_{uv}(s,t) = \rho_{uv} = 0 $$
 
-That is, all movements are instantaneous, and the rate of movement is the mean rate of movement over the entire observation period. This is an oversimplification of the work done in @donker, but represents a "worst" case model of temporal fidelity that can be benchmarked against.
+That is, all movements are instantaneous, and the rate of movement is the mean rate of movement over the entire observation period. This is an oversimplification of the work done in @donker_hospital_2012, but represents a "worst" case model of temporal fidelity that can be benchmarked against.
 
 ### Improved Static Model
 
@@ -228,7 +231,6 @@ Here, we model the rate of indirect transfers $\eta$ similarly to the rate of di
 
 Of course, as the hospital system changes over time, the rate of patient transfers, and thus the hazards represented in our model should also change.
 We see evidence of this in @fig-movement-over-time where we plot the overall rates of movement in the network over time.
-
 
 We approach this using static network snapshots of the hospital system over time. 
 
@@ -321,12 +323,13 @@ _ = ax.set_xlabel('Date')
 _ = ax.set_ylabel('Number of patient transfers')
 ```
 
-Binning the length of stay and the time between sequential admissions of the same patient into 1-day bins in @fig-stay-duration and @fig-readmission-time, we can see that both quantities are power-law distributed when aggregated over the entire dataset.
+Binning the length of stay and the time between sequential admissions of the same patient into 1-day bins in @fig-stay-duration and @fig-readmission-time, we can see that both quantities are power-law distributed, or at least heavy-tailed, when aggregated over the entire dataset.
 Thus, a fully Markovian Poisson process on a static network is unlikely to be a good representation of the movement in the network.
 
 
 ```{python}
-# power law fitting utils
+#| label: compute-fitting-util-fns
+
 def pull_xfx(df, make_midpoint=True, left="bin_edge_right", right="bin_edge_right", quantity='bin_midpoint', count="count"):
   if make_midpoint:
     xfx_df = df.with_columns(bin_midpoint=(pl.col(left)+pl.col(right))/2)
@@ -336,18 +339,25 @@ def pull_xfx(df, make_midpoint=True, left="bin_edge_right", right="bin_edge_righ
   y_arr = xfx_df.select(count).to_series().to_numpy()
   return x_arr, y_arr
   
+def scaled_N(x, fx, xmin):
+  mask = x > xmin
+  return np.sum(fx[mask])
+
+# power law via pareto MLE
 def estimate_alpha(x, fx, xmin, discr_corr=0.5):
   mask = x > xmin
   relative_x = np.log(x[mask] / (xmin-discr_corr))
   sum_relx = fx[mask] * relative_x
   return 1 + np.sum(fx[mask]) / np.sum(sum_relx)
 
-def scaled_N(x, fx, xmin):
-  mask = x > xmin
-  return np.sum(fx[mask])
-
 def power_law_density_fn(xs, alpha, xmin, N=1):
   return N * (xs ** (-alpha) / special.zeta(alpha, xmin))
+
+# power law graphical method
+def power_law_fit_graphical(x, fx, xmin):
+  mask = (fx > 0) & (x > xmin)
+  coefs = stats.linregress(np.log(x[mask]), np.log(fx[mask]))
+  return coefs.slope, np.exp(coefs.intercept)
 
 # expon fitting utils
 def estimate_gamma(x, fx):
@@ -356,12 +366,6 @@ def estimate_gamma(x, fx):
 
 def expon_density_fn(xs, gamma, N=1):
   return N * gamma * np.exp(-gamma * xs)
-
-# power law graphical method
-def power_law_fit_graphical(x, fx, xmin):
-  mask = (fx > 0) & (x > xmin)
-  coefs = stats.linregress(np.log(x[mask]), np.log(fx[mask]))
-  return coefs.slope, np.exp(coefs.intercept)
 ```
 
 ```{python}
@@ -370,17 +374,43 @@ def power_law_fit_graphical(x, fx, xmin):
 
 stay_dur_df = pl.read_csv(root / "data/export/length_of_stay_binned.csv")
 
+stay_dur_xmin = 28
 stay_dur_xfx = pull_xfx(stay_dur_df)
 stay_dur_expon_gamma = estimate_gamma(*stay_dur_xfx)
-stay_dur_pow_alpha = estimate_alpha(*stay_dur_xfx, xmin=40)
+stay_dur_pow_alpha = estimate_alpha(*stay_dur_xfx, xmin=stay_dur_xmin)
 
+stay_dur_xgrid = np.linspace(1, 3000, 3000)
 
 fig, ax = plt.subplots()
 sns.scatterplot(stay_dur_df, x='bin_edge_right', y='count', linewidth=0, ax=ax)
-ax.set_xlabel('Length of Stay [days]')
-ax.set_ylabel('Count')
 ax.set_xscale('log')
 ax.set_yscale('log')
+ylim_ = ax.get_ylim()
+ax.plot(
+  stay_dur_xgrid, 
+  expon_density_fn(
+    stay_dur_xgrid, 
+    stay_dur_expon_gamma, 
+    N=stay_dur_xfx[1].sum()
+  ),
+  color='C1', 
+  label='best-fit exponential',
+)
+ax.plot(
+  stay_dur_xgrid,
+  power_law_density_fn(
+    stay_dur_xgrid, 
+    stay_dur_pow_alpha,
+    xmin = stay_dur_xmin,
+    N=scaled_N(*stay_dur_xfx, xmin=stay_dur_xmin),
+  ),
+  color='C2',
+  label='power law fit'
+)
+ax.set_xlabel('Length of Stay [days]')
+ax.set_ylabel('Count')
+ax.set_ylim(ylim_)
+ax.legend()
 
 sns.despine(ax=ax)
 ```
@@ -418,8 +448,12 @@ readmission_mean = readmission_df.select(
 ).sum().item()
 
 gamma = 1. / readmission_mean
-_xgrid = np.arange(0, 366, 1)
+_xgrid = np.linspace(0.0, 366, 10_000)
 ax.plot(_xgrid, gamma * np.exp(-(_xgrid * gamma)), color='orange', linestyle='dashed', label='best-fit exponential')
+
+readmits_xfx = pull_xfx(readmission_df, make_midpoint=False, quantity='Readmission Time [days]', count='Density')
+alpha, cees = power_law_fit_graphical(*readmits_xfx, xmin=30)
+ax.plot(_xgrid, cees * _xgrid ** alpha, color='green', label='power law fit')
 
 ax.set_ylim(*_ylims)
 ax.set_xlim(*_xlims)
@@ -645,7 +679,14 @@ _ = final_heatmap(histories, norm=mcolors.PowerNorm(0.4), bins=(313,31), cutoff=
 # Discussion
 
 We have investigated the effects of modelling the network representations of patient transfers between healthcare facilities in Victoria with differing levels of temporal fidelity. We see that there are qualitative behavioural differences between the movement patterns induced by these different network representations.
-One unique temporal property of the networks here is that edges can connect nodes not just in space, but also in time. This leads to a reservoir of individuals of interest that exist outside of the healthcare system that will return at a later time, which leads to rich temporal dynamics. These behaviours are poorly captured by a naïve static network; including this mechanism on top of a static network representation can help significantly in moving the qualitative behaviour fo the 
+One unique temporal property of the networks here is that edges can connect nodes not just in space, but also in time. This leads to a reservoir of individuals of interest that exist outside of the healthcare system that will return at a later time, which leads to rich temporal dynamics. 
+At a high-level, a model with better temporal fidelity suggests a much less severe outbreak -- the number of facilities that could be affected by colonised in a given time period after initial detection is lower than suggested by a more static model. 
+However, this slowdown is caused by a large "reservoir" that exists "outside" of the healthcare system, and is thus much more difficult to detect. 
+These behaviours are poorly captured by a naïve static network; including this mechanism on top of a static network representation can help significantly in moving the qualitative behaviour of the hitting time distribution towards the one produced by the temporal network representation.
+
+
+In the current study, we have used a discrete time stepping scheme in order to allow for some non-Markovian behaviour; it is likely that an agent-based model would be a more "accurate" representation. 
+We have also neglected "higher-order" pathing. [@myall_network_2021]
 
 
 # References
@@ -659,6 +700,11 @@ One unique temporal property of the networks here is that edges can connect node
 
 # Supplementary 
 
+## Removal of admission overlaps
+
+Due to a variety of reasons ranging from the lack of a unique patient identifier and administrative data entry errors, there are instances of overlapping admissions for a single patient.
+In these cases, we resolve these overlaps by deferring to the admission event that had 
+
 ## Verification of simulation results
 
 For any continuous-time Markov chain, we can derive the Q-matrix, which represents how ...
@@ -667,7 +713,7 @@ Importantly, we can use the forward equation to generate a viable representation
 Typically, the structure of these models represents the state of the _system_; here we use the model as a representation of teh state of an _individual_. Thus, we can envision a simulation with $N_0$ initial seed individuals as being equivalent to $N_0$ independent, but identically distributed, Markov chains.
 Here, then, a state maps onto a facility; for more complex models, a state may map onto either a facility, or a "home" state that could be uniquely identified by a pair of facilities.
 
-This make computing the probability density function very computationally expensive when the number of Markov states becomes large. This is due to the fact that the ODE system will tend towards very dense matrices $P$ if the network is connected, even if $Q$ itself is sparse. This makes some representations, in particular the temporal network, completely intractable, since we would have to allocate a ${(N_f)}^2 \times {(N_T)}^2$ floating point matrix for each time step. For $N_f \sim O(10^2), N_T \sim O(10^3)$, this yields a roughly $O(10^{(10\sim 11)}$ byte (10\~100 GB) float32 matrix every time step (in memory).
+This make computing the probability density function very computationally expensive when the number of Markov states becomes large. This is due to the fact that the ODE system will tend towards very dense matrices $P$ if the network is connected, even if $Q$ itself is sparse. This makes some representations, in particular the temporal network, completely intractable, since we would have to allocate a ${(N_f)}^2 \times {(N_T)}^2$ floating point matrix for each time step. For $N_f \sim O(10^2), N_T \sim O(10^3)$, this yields a roughly $O(10^{(10\sim 11)})$ byte (10\~100 GB) float32 matrix every time step (in memory).
 
 Thus, we only solve this problem for the naïve static network case.
 Below, we plot the analytical solution against the empirical mean hitting time of pairs that have all realisations hitting.
@@ -767,7 +813,7 @@ Due to the underlying data being identiiable health information, we extract binn
 For the distribution of patient stay durations, we use the method from @clauset_power-law_2009, where the probability distribution function is given by
 
 $$
-f(x) = \frac{\alpha - 1}{x_{\textrm{min}}} \left(\frac{x}{x_{\textrm{min}}\right)^\alpha,
+f(x) = \frac{\alpha - 1}{x_{\textrm{min}}} \left(\frac{x}{x_{\textrm{min}}}\right)^\alpha,
 $$
 
 where $\alpha and x_{\textrm{min}}$ are distributional parameters. For a given $x_\textrm{min}$, the MLE for $\alpha$ is recovered as
@@ -776,7 +822,7 @@ $$
 \hat{\alpha}(x_\text{min}) = 1 + n \left[\sum_{i=1}^{n} \log\left(\frac{x_i}{x_\textrm{min}}\right) \right].
 $$
 
-$x_\text{min}$ is estimated by a grid search, and looking the region where the corresponding $\hat{\alpha}\text{s}$ are stable.
+$x_\text{min}$ is estimated by a grid search, and looking the region where the corresponding $\hat{\alpha}\text{s}$ are stable. We note that it is probably more appropriate to seek a piecewise power law fit, but we do not use these power law fits directly in our simulation models.
 
 ```{python}
 #| label: fig-stay-dur-xmin-gridsearch
@@ -792,11 +838,11 @@ Ncounts = [scaled_N(*stay_dur_xfx, xmin=xmin) for xmin in xmin_arr]
 fig, axs = plt.subplots(ncols=2, figsize=(10, 4))
 axz = axs.flatten()
 
-axz[1].loglog(xmin_arr, alpha_hats)
+axz[1].plot(xmin_arr, alpha_hats)
 axz[1].set_xlabel(r'$x_\text{min}$')
 axz[1].set_ylabel(r'$\hat\alpha$')
 
-axz[0].scatter(*stay_dur_xfx, alpha=0.3, color='k', zorder=999)
+axz[0].scatter(*stay_dur_xfx, alpha=0.4, color='C0', zorder=999, linewidth=0)
 axz[0].set_xscale('log')
 axz[0].set_yscale('log')
 axz[0].set_xlabel('Stay Duration [Days]')
@@ -804,7 +850,7 @@ axz[0].set_ylabel('Count')
 ylim_ = axz[0].get_ylim()
 
 xgrid = np.linspace(0.5, 2500, 10_000)
-xgrid_norm = mcolors.Normalize(vmin=min(xmin_arr), vmax=max(xmin_arr))
+xgrid_norm = mcolors.Normalize(vmin=-100, vmax=max(xmin_arr))
 xgrid_clrs = cm.ScalarMappable(cmap=cm.YlOrRd, norm=xgrid_norm)
 for xmin, alpha, NN in zip(xmin_arr, alpha_hats, Ncounts):
   axz[0].plot(
@@ -814,10 +860,16 @@ for xmin, alpha, NN in zip(xmin_arr, alpha_hats, Ncounts):
     color=xgrid_clrs.to_rgba(xmin),
   )
 axz[0].set_ylim(ylim_)
-fig.colorbar(xgrid_clrs, ax=axz[0])
+clbr = fig.colorbar(xgrid_clrs, ax=axz[0])
+clbr.ax.set_ylim((0, None))
 ```
 
-For readmission, preliminary linear regression on log-log shows that we have $\alpha < 1$, so we cannot use the result from @clauset_power-law_2009. 
+For readmission, preliminary linear regression on log-log shows that we have $\alpha < 1$, so we cannot use the result from @clauset_power-law_2009. Instead, we inspect the behaviour of a the linear regressop on log-log as a function of a lower threshold $x_\text{min}$.
+The probability density function will follow:
+$$ 
+f(x) = c x^\alpha, \qquad x_\text{min} \leq x \leq x_\text{max}
+$$
+
 ```{python}
 #| label: fig-readmit-gridsearch 
 #| fig-cap: Readmission time grid search 
@@ -846,7 +898,7 @@ axs['coeficpt'].plot(r_xmin_arr, pl_icpts)
 axs['coeficpt'].set_xlabel(r'$x_\text{min}$')
 axs['coeficpt'].set_ylabel(r'$\hat{c}$')
 
-axs['datafit'].scatter(*readmit_xfx, alpha=0.3, color='k', zorder=997)
+axs['datafit'].scatter(*readmit_xfx, alpha=0.4, color='C0', zorder=997, linewidth=0)
 axs['datafit'].set_xscale('log')
 axs['datafit'].set_yscale('log')
 axs['datafit'].set_xlabel('Readmission Duration [Days]')
@@ -854,7 +906,7 @@ axs['datafit'].set_ylabel('Count')
 ylim_ = axs['datafit'].get_ylim()
 
 r_xgrid = np.linspace(0.5, 370, 10_000)
-r_xmin_norm = mcolors.Normalize(vmin=min(r_xmin_arr), vmax=max(r_xmin_arr))
+r_xmin_norm = mcolors.Normalize(vmin=-50, vmax=max(r_xmin_arr))
 r_xmin_clrs = cm.ScalarMappable(cmap=cm.YlOrRd, norm=r_xmin_norm)
 for xmin, (alpha, icpt) in zip(r_xmin_arr, power_law_fits):
   axs['datafit'].plot(
@@ -864,5 +916,6 @@ for xmin, (alpha, icpt) in zip(r_xmin_arr, power_law_fits):
     color=r_xmin_clrs.to_rgba(xmin),
   )
 axs['datafit'].set_ylim(ylim_)
-fig.colorbar(r_xmin_clrs, ax=axs['datafit'])
+clbr = fig.colorbar(r_xmin_clrs, ax=axs['datafit'])
+clbr.ax.set_ylim((0, None))
 ```
