@@ -151,41 +151,23 @@ In this study, we will use the Victorian healthcare system as a case study to fu
 
 We use admissions data sourced from the Victorian Admitted Episdoes Dataset (VAED) [@VAED_official]. This contains line-listed admissions for patients in Victoria, Australia, covering 338 healthcare facilities that vary in size, case mix and services.
 the dataset contains 26,796,407 individual admissions across 5,471893 unique patients, from 1 January 2011 through to 6 December 2019 (3631 days).
+Some exploratory analysis of this data was done in [@lydeamore_carbapenemase-producing_2024] using a static network framework, and it characterises the structure of the healthcare system.
 Overlapping admissions for a patient are resolved by deferring to the patient's most recent admission event, and the method is described in detail in the Appendix, and is used in [@donker_patient_2010,@nekkab_assessing_2020]. 
 
-
-
-Some exploratory analysis of this data was done in [@lydeamore_carbapenemase-producing_2024] using a static network framework, and it characterises the structure of the healthcare system.
-
-<!--# Model description starts here -->
-
-Admissions data can be used to inform the construction of a wide variety of (weighted, directed) networks, which can, in turn, be used to construct a stochastic process model. In this study, we use discrete time Markov chain models, where a state vector $x$ that represents the number of marked individuals at facilities $u$. Weights $w_{ij}$ of the edges $e_{ij}$ between nodes $u_i, u_j$ of the network inform the hazard function of the movement process of marked individuals between those nodes.
-By default, the movement process is a Markovian process, i.e. is a Poisson random variable with hazard $\lambda_{ij}(x_i, t) = c_iw_{ij}x_i\Delta t$, where $c_i$ is a normalising constant, and $\Delta t$ is the time step.
-
-Applying this directly to a static network of transfers between healthcare facilities, with appropriate infection dynamics, is what is done in @donker_hospital_2012, for example, and represents a model where ....
-However, since individuals tend to leave the hospital system for non-negligible amoutns of time, it may be appropriate to include time spent in the community (e.g. at home) as additional nodes of the network. 
-In @belik_leveraging_2017, this approach is taken with a temporal network approach in snapshot representation, where the system over a time period is represented as a series of static networks that "snapshot" the system at discrete points in time. 
-Through examination of the behaviour of transfers, especially those that are indirect and cross-facilitly, we want to expand on this temporal representation, and include edges that explicityl ...
-
-We can capture the This motivates the general representation in @fig-general-diagram, where edges from a location $u$ can go to null (discharged and never seen again), directly to some location $v$ (that could be $u$), or indirectly to $v$ via a community node $h_{uv}$. 
-
-
-![Sketch of the generalised model with processes of (1) permanent discharge ($u \to \emptyset$), (2) direct transfer ($u \to v$), (3) return home ($u \to h_{uv}$), (4) readmission $h_{uv} \to v$).](diagrams/movement_general_case.pdf){#fig-general-diagram}
-
-The governing equations for such models can be captured by sets of transitions modelled as a Markov chain. The hazards of the transition events is given in @eq-general-model-transitions.
+As stated above, existing literature does examine patient transfer networks using network analysis methods. These encompass a large range of dynamics and temporal fidelity of movement.
+Here, we will consider a number of different models of movement at various levels of temporal fidelity. In general, we will decompose the model of patient movement as in @fig-general-diagram, where a patient is discharged at location $u$ at time $s$, to either never readmit (move to $\emptyset$), directly transfer to location $v$ at time $s$, or return home $h_{uv}$ and admit at location $v$ at some later time $t$. This dynamic is replicated at each pair of locations $(u, v)$, and potentially over all pairs of times $(s, t)$.
+The hazards for these processes are used to define discrete-time stochastic processes that can be analysed, and will be simulated, in order to understand the dynamics of the movement models.
+These can be captured in @eq-general-model-transitions:
 
 $$
 \begin{aligned}
 \lambda(u(s) \to \emptyset) &= \zeta_u(s)\\
-\lambda(u(s) \to v(t)) &= d_{uv}(s, t)\\
-\lambda(u(s) \to z_{uv}(s, t)) &= \eta_{uv}(s, t)\\
-\lambda(z_{uv}(s, t) \to v(t)) &= \rho_{uv}(s, t)
+\lambda(u(s) \to v(s)) &= d_{uv}(s)\\
+\lambda(u(s) \to h_{uv}(s, t)) &= \eta_{uv}(s, t)\\
+\lambda(h_{uv}(s, t) \to v(t)) &= \rho_{uv}(s, t)
 \end{aligned}
 $$ {#eq-general-model-transitions}
 
-In order in increase the flexibility of the models, we will use a _discrete time_ Markov chain, where we have a Poisson-distributed number of transition events occur within some given timestep. For some models, we will also allow for the number of transitions for a particular class of event to be non-Poisson.
-
-<!--# Model abstraction ends here, model details start here -->
 
 Under this general structure, we can describe four network models that capture different levels of temporal fidelity. 
 
@@ -208,7 +190,7 @@ We can begin with a simple naive static model. This model will have the edge wei
 
 With reference to the general model above, the hazards of the  naïve static model are:
 
-$$ d_{uv}(s,t) = d_{uv} = \frac{\sum_{s,t} w_{uv}(s,t)}{T_\Sigma N_u} $$
+$$ d_{uv}(s) = d_{uv} = \frac{\sum_{s,t} w_{uv}(s,t)}{T_\Sigma N_u} $$
 $$ \eta_{uv}(s,t) = \eta_{uv} = 0 $$
 $$ \rho_{uv}(s,t) = \rho_{uv} = 0 $$
 
@@ -221,7 +203,7 @@ In this model, we choose some threshold value $\omega$ that delineates direct tr
 
 In comparison to the naive model, we will have non-zero hazards $\eta$ and $\rho$:
 
-$$d_{uv}(s,t) = d_{uv} =  \frac{\sum_{s,t: (t-s) < \omega} w_{uv}(s,t)}{T_\Sigma N_u}$$
+$$d_{uv}(s) = d_{uv} =  \frac{\sum_{s,t: (t-s) < \omega} w_{uv}(s,t)}{T_\Sigma N_u}$$
 $$\eta_{uv}(s,t) = \eta_{uv} = \frac{\sum_{s,t: (t-s) \geq \omega} w_{uv}(s,t)}{T_\Sigma N_u}$$
 $$\rho_{uv}(s,t) = \rho_{uv} = \left[ \frac{\sum_{s,t: (t-s) \geq \omega} (t-s) w_{uv}(s,t)}{\sum_{s,t: (t-s) \geq \omega} w_{uv}(s,t)}  \right]^{-1}$$
 
@@ -249,7 +231,7 @@ where $\delta(\cdot)$ is the Dirac delta function.
 Alongside this, we also compute from the data, the number of patients "at home" at a given time, in order to inform the denominator for the process from $z'$ to $z$. We denote this quantity $H_{uv}(t)$
 We will have that:
 
-$$d_{uv}(s,t) = d_{uv}(s) = \frac{\sum_{t: (t-s) < \omega} w_{uv}(s,t)}{\omega N_u}$$
+$$d_{uv}(s) = \frac{\sum_{t: (t-s) < \omega} w_{uv}(s,t)}{\omega N_u}$$
 $$\eta_{uv}(s,t) = \eta_{uv}(s) = \frac{\sum_{t: (t-s) \geq \omega} {w_{uv}(s, t)}}{\omega N_u}$$
 $$\rho_{uv}(s,t) = \rho_{uv}(t) = \frac{\sum_{s: (t-s) \geq \omega} {w_{uv}(s, t)}}{\omega H_{uv}}$$
 
@@ -260,7 +242,7 @@ For the temporal network, we make a choice of the time discretisation $\omega$. 
 For the readmission process, we assume that individuals that would readmit within a given time window $[\tau, \tau+\omega)$ do so uniformly. 
 This yields:
 
-$$d_{uv}(s, t) = \frac{\sum_{t: (t-s) < \omega} w_{uv}(s, t)}{\omega N_u}$$
+$$d_{uv}(s) = \frac{\sum_{t: (t-s) < \omega} w_{uv}(s, t)}{\omega N_u}$$
 $$\eta_{uv}(s, t) = \frac{\sum_{t: (t-s) \geq \omega} w_{uv}(s, t)}{\omega N_u}$$
 $$\rho_{uv}(s,t) = \frac{1}{\lceil{}t\rceil{}_\omega - t}$$
 
@@ -684,10 +666,11 @@ At a high-level, a model with better temporal fidelity suggests a much less seve
 However, this slowdown is caused by a large "reservoir" that exists "outside" of the healthcare system, and is thus much more difficult to detect. 
 These behaviours are poorly captured by a naïve static network; including this mechanism on top of a static network representation can help significantly in moving the qualitative behaviour of the hitting time distribution towards the one produced by the temporal network representation.
 
+There are some clear avenues of further investigation from the current study.
+One of these is the addition of disease transmission dynamics. We chose to neglect these mechanisms due to the complexity of defining and characterising the manner of transmission within a facility -- and this can have confounding effects on the interpretation of observed results. It is believed that CPE, for example, is transmitted through the environment, with 
 
-In the current study, we have used a discrete time stepping scheme in order to allow for some non-Markovian behaviour; it is likely that an agent-based model would be a more "accurate" representation. 
-We have also neglected "higher-order" pathing. [@myall_network_2021]
-
+In the current study, we have used a discrete time stepping scheme in order to allow for some non-Markovian behaviour; it is likely that an agent-based model would be a more "accurate" representation. This would allow for "higher-order" behaviours, such as those observed in [@myall_network_2021], where patient pathways through wards in that case, and hospitals in ours, are dependent on their admission history.
+However, agent-based models are an order of magnitude more expensive to simulate, due to increased computational and memory requirements. The number of 
 
 # References
 ::: {#refs}
